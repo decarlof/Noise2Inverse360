@@ -142,6 +142,10 @@ bash denoise_volume.sh /path/to/config.yaml 500 600
 -   Mini-batch inference
 -   Saves output `.tiffs`
 
+### Denoise Example 
+
+<img src="figs/denoised_example.png" width="100%">
+
 ## Contributing
 
 Areas for improvement:
