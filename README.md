@@ -9,7 +9,7 @@ learning model. A simple U-Net model with leaky ReLU and group norm is
 used for denoising.
 
 <p align="center">
-  <img src="figs/workflow.png" width="800">
+  <img src="figs/workflow.svg" width="100%">
 </p>
 
 ## Assumptions
