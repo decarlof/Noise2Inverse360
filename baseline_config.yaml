@@ -1,0 +1,15 @@
+dataset:
+  directory_to_reconstructions: # need to specify 
+  sub_recon_name0: # need to specify
+  sub_recon_name1: # need to specify
+  full_recon_name: # need to specify
+train:
+  psz: 256
+  n_slices: 5
+  mbsz: 32
+  lr: 0.001
+  warmup: 2000
+  maxep: 2000
+infer:
+  overlap: 0.5
+  window: "cosine"
