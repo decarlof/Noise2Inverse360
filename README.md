@@ -9,7 +9,7 @@ learning model. A simple U-Net model with leaky ReLU and group norm is
 used for denoising.
 
 <p align="center">
-  <img src="figs/workflow.svg" width="100%">
+  <img src="docs/source/img/workflow.svg" width="100%">
 </p>
 
 ## Installation
@@ -17,9 +17,11 @@ used for denoising.
 Create the conda environment:
 
 ``` bash
-git clone https://github.com/AISDC/Noise2Inverse360.git
-cd Noise2Inverse360
-conda env create -f n2i_environment.yml
+git clone https://github.com/AISDC/Noise2Inverse360 denoise
+cd denoise
+conda env create -f envs/n2i_environment.yml
+conda activate n2i
+pip install .
 ```
 
 Dependencies include:
@@ -73,28 +75,41 @@ Dependencies include:
 
 ## Project Structure
 
-    N2I/
-    ├── data.py
-    ├── data_util.py
-    ├── denoise_slice.py
-    ├── denoise_volume.py
-    ├── eval.py
-    ├── loss.py
-    ├── main.py
-    ├── model.py
-    ├── tiffs.py
-    ├── utils.py
-    ├── train.sh
-    ├── denoise_slice.sh
-    ├── denoise_volume.sh
-    ├── environment.yaml
-    └── baseline_config.yaml
+    denoise/
+    ├── denoise/
+    │   ├── __init__.py
+    │   ├── __main__.py      # CLI entry point (train / slice / volume)
+    │   ├── log.py           # colored logging module
+    │   ├── train.py         # DDP training loop
+    │   ├── slice.py         # single-slice inference
+    │   ├── volume.py        # full-volume inference
+    │   ├── data.py          # dataset classes
+    │   ├── data_utils.py    # patch extraction / stitching
+    │   ├── model.py         # U-Net architecture
+    │   ├── loss.py          # LCL loss
+    │   ├── eval.py          # evaluation metrics
+    │   ├── tiffs.py         # TIFF I/O utilities
+    │   └── utils.py         # image utilities
+    ├── docs/                # Sphinx documentation
+    │   └── source/img/      # workflow and example figures
+    ├── envs/
+    │   ├── n2i_environment.yml
+    │   └── requirements.txt
+    ├── baseline_config.yaml
+    ├── setup.py
+    └── VERSION
 
 ## Getting Started
 
-### Bash Scripts
+### Installation
 
-Add the path to the virtual environment inside each `.sh` script.
+``` bash
+git clone https://github.com/AISDC/Noise2Inverse360 denoise
+cd denoise
+conda env create -f envs/n2i_environment.yml
+conda activate n2i
+pip install .
+```
 
 ### Config File
 
@@ -107,7 +122,7 @@ modify:
 ### Training
 
 ``` bash
-bash train.sh /path/to/config.yaml
+torchrun --nproc_per_node=2 -m denoise train --config /path/to/config.yaml --gpus 0,1
 ```
 
 Training workflow:
@@ -125,7 +140,7 @@ Training workflow:
 ### Denoise Slice
 
 ``` bash
-bash denoise_slice.sh /path/to/config.yaml 500
+denoise slice --config /path/to/config.yaml --slice-number 500
 ```
 
 -   Loads pretrained model
@@ -137,7 +152,8 @@ bash denoise_slice.sh /path/to/config.yaml 500
 ### Denoise Volume
 
 ``` bash
-bash denoise_volume.sh /path/to/config.yaml 500 600
+denoise volume --config /path/to/config.yaml
+denoise volume --config /path/to/config.yaml --start-slice 500 --end-slice 600
 ```
 
 -   Optionally denoise slice subset
@@ -150,7 +166,7 @@ bash denoise_volume.sh /path/to/config.yaml 500 600
 ### Denoised Example 
 
 <p align="center">
-  <img src="figs/denoised_example4.svg" width="800">
+  <img src="docs/source/img/denoised_example4.svg" width="800">
 </p>
 
 ## Contributing

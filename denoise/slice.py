@@ -1,25 +1,35 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
-from model import unet_ns_gn
-import torch, argparse, os, time, sys, shutil, logging, yaml
+"""
+Denoise a single CT slice using a trained Noise2Inverse model.
+"""
+
+import os
+import yaml
 import numpy as np
+import torch
 import tifffile
-import tiffs
-from tqdm import tqdm
-
 import warnings
+
 warnings.filterwarnings("ignore")
 
-from utils import save2img
-from data_utils import extract_sliding_window_patches_25d, stitch_sliding_window_patches 
+from tqdm import tqdm
+from denoise.model import unet_ns_gn
+from denoise.utils import save2img
+from denoise.data_utils import extract_sliding_window_patches_25d, stitch_sliding_window_patches
+from denoise import tiffs as tiffs_mod
+from denoise import log
 
-def main(args):
+
+def run(args):
 
     # Read the YAML file
     with open(args.config, 'r') as file:
         params = yaml.safe_load(file)
 
     # create directory for denoised slices
-    out_path = params['dataset']['directory_to_reconstructions'] + '/' 'denoised_slices'
+    out_path = params['dataset']['directory_to_reconstructions'] + '/' + 'denoised_slices'
     if not os.path.isdir(out_path):
         os.mkdir(out_path)
 
@@ -34,20 +44,19 @@ def main(args):
     model.load_state_dict(checkpoint['model_state_dict'])
     model.to(dev)
 
-    # get data
-    print(f"\nLoading in slice {args.slice_number}.\n")
+    log.info("Loading slice %d" % args.slice_number)
 
     # path to data
     full_recon_path = params['dataset']['directory_to_reconstructions'] + '/' + params['dataset']['full_recon_name']
 
     # collect tiff files
-    tiffs_collection = tiffs.glob(full_recon_path)
+    tiffs_collection = tiffs_mod.glob(full_recon_path)
 
     # supports 2.5D modeling
     S = len(tiffs_collection)
     left = n_slices // 2
     right = n_slices - 1 - left
-    offsets = np.arange(-left, right + 1, dtype=int)  # length == num_slices
+    offsets = np.arange(-left, right + 1, dtype=int)
     idxs = args.slice_number + offsets
     idxs_mapped = np.clip(idxs, 0, S - 1)
 
@@ -55,13 +64,13 @@ def main(args):
     list_of_images_to_process = [tiffs_collection[img_num] for img_num in idxs_mapped]
 
     # load in data
-    images, _, _ = tiffs.load_stack(list_of_images_to_process)
+    images, _, _ = tiffs_mod.load_stack(list_of_images_to_process)
     images = torch.from_numpy(images[np.newaxis]).to(dev)
 
     # normalize image stack using training mean/std
     mean4norm = params['dataset']['mean4norm']
     std4norm = params['dataset']['std4norm']
-    
+
     images = (images - mean4norm) / std4norm
 
     psz = params['train']['psz']
@@ -86,35 +95,8 @@ def main(args):
     ).cpu().squeeze().numpy()
 
     # rescale back to original values
-    denoised = denoised*std4norm + mean4norm
+    denoised = denoised * std4norm + mean4norm
 
     # save denoised slice
     tifffile.imwrite(f'{out_path}/{args.slice_number:05d}.tiff', denoised)
-
-    #save2img(images[0, int(n_slices/2)].cpu().numpy(), f'_original_{args.slice_number:05d}.png')
-    #save2img(denoised, f'_denoised_{args.slice_number:05d}.png')
-    
-
-if __name__ == "__main__":
-
-    parser = argparse.ArgumentParser(description='Denoise CT slice with 2.5D N2I')
-    parser.add_argument('-gpus',   type=str, default="0", help='list of visiable GPUs')
-    parser.add_argument('-slice_number',type=int, required=True, help='test image')
-    parser.add_argument('-config', type=str, required=True, help='path to config yaml file')
-    parser.add_argument('-verbose',type=int, default=1, help='1:print to terminal; 0: redirect to file')
-
-    args, unparsed = parser.parse_known_args()
-
-    if len(unparsed) > 0:
-        print('Unrecognized argument(s): \n%s \nProgram exiting ... ... ' % '\n'.join(unparsed))
-        exit(0)
-
-    if len(args.gpus) > 0:
-        os.environ['CUDA_VISIBLE_DEVICES'] = args.gpus
-    
-    logging.getLogger('matplotlib.font_manager').disabled = True
-    logging.getLogger('matplotlib').setLevel(level=logging.CRITICAL)
-    if args.verbose:
-        logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
-        
-    main(args)
+    log.info("Saved denoised slice to %s/%05d.tiff" % (out_path, args.slice_number))

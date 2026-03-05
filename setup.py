@@ -1,0 +1,28 @@
+from setuptools import setup, find_packages
+
+setup(
+    name = 'denoise',
+    author = 'Austin Yunker',
+    author_email = 'ayunker@anl.gov',
+    description = 'Noise2Inverse CT denoising library.',
+    packages = find_packages(),
+    entry_points={'console_scripts': ['denoise = denoise.__main__:main'],},
+    version = open('VERSION').read().strip(),
+    zip_safe = False,
+    url = 'https://github.com/AISDC/Noise2Inverse360',
+    download_url = 'https://github.com/AISDC/Noise2Inverse360.git',
+    license = 'BSD-3',
+    platforms = 'Any',
+    classifiers = [
+        'Development Status :: 4 - Beta',
+        'License :: OSI Approved :: BSD License',
+        'Intended Audience :: Science/Research',
+        'Intended Audience :: Education',
+        'Intended Audience :: Developers',
+        'Natural Language :: English',
+        'Operating System :: OS Independent',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
+    ],
+)
