@@ -5,6 +5,57 @@ Usage
 denoise provides a command-line interface for training the Noise2Inverse model and
 denoising CT reconstructions.
 
+Data preparation
+================
+
+Noise2Inverse requires **two independent sub-reconstructions** produced from
+complementary angular subsets of the raw projections (e.g. even-indexed angles
+and odd-indexed angles). These two sub-reconstructions serve as the training
+pairs: the network learns to predict one from the other, which forces it to
+remove noise without access to any clean reference images.
+
+.. warning::
+
+   A single full-angle reconstruction is **not sufficient** to run denoise.
+   You must create the two sub-reconstructions from the raw projection data
+   before proceeding.
+
+The sub-reconstructions should be created with the same pre-processing steps
+(ring removal, phase retrieval, normalisation) as the full reconstruction.
+Using `tomopy <https://tomopy.readthedocs.io>`_ and
+`dxchange <https://dxchange.readthedocs.io>`_::
+
+    import tomopy
+    import dxchange
+
+    # load raw projections, flat fields, dark fields, and angles
+    proj, flat, dark, theta = dxchange.read_aps_2bm('raw_data.h5')
+
+    # flat-field correction
+    proj = tomopy.normalize(proj, flat, dark)
+
+    # split into two interleaved angular subsets
+    proj0  = proj[0::2]    # even-indexed projections
+    proj1  = proj[1::2]    # odd-indexed projections
+    theta0 = theta[0::2]
+    theta1 = theta[1::2]
+
+    # reconstruct each subset independently
+    rec0 = tomopy.recon(proj0, theta0, algorithm='gridrec')
+    rec1 = tomopy.recon(proj1, theta1, algorithm='gridrec')
+
+    # reconstruct the full dataset
+    rec_full = tomopy.recon(proj, theta, algorithm='gridrec')
+
+    # save as tiff stacks — each into its own subdirectory
+    dxchange.write_tiff_stack(rec0,    'recon_view0/recon')
+    dxchange.write_tiff_stack(rec1,    'recon_view1/recon')
+    dxchange.write_tiff_stack(rec_full,'recon_full/recon')
+
+The three output directories (``recon_view0/``, ``recon_view1/``,
+``recon_full/``) must all reside inside the same parent directory, which is
+then set as ``directory_to_reconstructions`` in the configuration file.
+
 Initialization
 ==============
 
@@ -27,7 +78,17 @@ denoise train
 -------------
 
 Train the Noise2Inverse model. Because the training uses PyTorch DDP, it must be
-launched via ``torchrun``::
+launched via ``torchrun``.
+
+.. note::
+
+   ``torchrun`` is installed inside the ``n2i`` conda environment. If you used a
+   different environment (e.g. ``tomocupy``) to create the sub-reconstructions,
+   make sure to switch back before running training::
+
+       $ conda activate n2i
+
+Launch training with two GPUs::
 
     (n2i) $ torchrun --nproc_per_node=2 -m denoise train \\
                 --config my_experiment.yaml --gpus 0,1
