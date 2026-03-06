@@ -88,14 +88,25 @@ launched via ``torchrun``.
 
        $ conda activate n2i
 
+.. warning::
+
+   On systems where user-local packages (``~/.local/lib/python3.9/site-packages/``)
+   are present, they may shadow the conda environment's packages and cause import
+   errors — most commonly a numpy version conflict between ``torch`` and packages
+   installed in ``~/.local``. Always launch training with ``PYTHONNOUSERSITE=1``
+   to prevent this::
+
+       (n2i) $ PYTHONNOUSERSITE=1 torchrun --nproc_per_node=2 -m denoise train \
+                   --config my_experiment.yaml --gpus 0,1
+
 Launch training with two GPUs::
 
-    (n2i) $ torchrun --nproc_per_node=2 -m denoise train \\
+    (n2i) $ PYTHONNOUSERSITE=1 torchrun --nproc_per_node=2 -m denoise train \\
                 --config my_experiment.yaml --gpus 0,1
 
 For single-GPU training::
 
-    (n2i) $ torchrun --nproc_per_node=1 -m denoise train \\
+    (n2i) $ PYTHONNOUSERSITE=1 torchrun --nproc_per_node=1 -m denoise train \\
                 --config my_experiment.yaml --gpus 0
 
 Progress is logged to ``~/logs/denoise_<timestamp>.log`` and printed to the console
