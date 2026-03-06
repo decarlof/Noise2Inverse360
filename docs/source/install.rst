@@ -96,3 +96,15 @@ The full dependency list is in ``envs/n2i_environment.yml``. Key packages::
     matplotlib
     scikit-image
     scipy
+
+.. warning::
+
+   Do **not** add ``opencv-python-headless`` to the environment.
+   That package requires ``numpy>=2``, which is incompatible with
+   ``torch 2.0.1`` and causes::
+
+       AttributeError: module 'numpy.core.multiarray' has no attribute 'signedinteger'
+
+   It was likely left behind from notebook-based exploratory work and is not
+   needed by any part of the pipeline. The ``numpy<2.0`` pin in
+   ``envs/requirements.txt`` guards against accidental upgrades.
