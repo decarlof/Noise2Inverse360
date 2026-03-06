@@ -122,7 +122,7 @@ class TomoDatasetTrain(Dataset):
         view0 = np.moveaxis(augmented['image'], -1, 0)
         view1 = np.moveaxis(augmented['split1'], -1, 0)
 
-        return view0, view1
+        return view0.astype(np.float32), view1.astype(np.float32)
 
     def __len__(self):
         return self.split0.shape[0]
