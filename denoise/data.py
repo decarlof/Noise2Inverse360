@@ -122,7 +122,8 @@ class TomoDatasetTrain(Dataset):
         view0 = np.moveaxis(augmented['image'], -1, 0)
         view1 = np.moveaxis(augmented['split1'], -1, 0)
 
-        return view0.astype(np.float32), view1.astype(np.float32)
+        return (torch.from_numpy(np.ascontiguousarray(view0, dtype=np.float32)),
+                torch.from_numpy(np.ascontiguousarray(view1, dtype=np.float32)))
 
     def __len__(self):
         return self.split0.shape[0]
