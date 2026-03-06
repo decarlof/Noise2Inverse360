@@ -1,5 +1,7 @@
 # 2.5D Noise2Inverse for Denoising CT Data
 
+[![Documentation Status](https://readthedocs.org/projects/noise2inverse360/badge/?version=latest)](https://noise2inverse360.readthedocs.io/en/latest/)
+
 ## Overview
 
 This project provides an implementation of the Noise2Inverse (N2I)
