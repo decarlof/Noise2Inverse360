@@ -21,14 +21,14 @@ git clone https://github.com/AISDC/Noise2Inverse360 denoise
 cd denoise
 conda env create -f envs/n2i_environment.yml
 conda activate n2i
-pip install .
+pip install . --no-deps
 ```
 
 Dependencies include:
 
 -   albumentations (data augmentation)
--   pytorch (2.4.0)
--   cuda (11.8)
+-   pytorch (2.0.1)
+-   cuda (11.7)
 -   tifffile
 -   tqdm
 -   matplotlib
@@ -44,17 +44,14 @@ Dependencies include:
         -   Sample 1 Directory:
             -   Provided by the User:
                 -   Full Reconstruction (Directory)
+            -   Created by `denoise prepare`:
+                -   Sub-Reconstruction 0 (Directory)
                 -   Sub-Reconstruction 1 (Directory)
-                -   Sub Reconstruction 2 (Directory)
-            -   Provided by N2I:
                 -   `config.yaml`
+            -   Created by `denoise train` / inference:
                 -   TrainOutput (Directory)
                 -   `denoised_slices/`
                 -   `denoised_volume/`
-
--   Data for training/inference is already created.
-
-    -   This project does not generate reconstructions.
 
 -   Data is saved as `.tiff` files (`.tif` or `.tiff`).
 
@@ -78,7 +75,7 @@ Dependencies include:
     denoise/
     ├── denoise/
     │   ├── __init__.py
-    │   ├── __main__.py      # CLI entry point (train / slice / volume)
+    │   ├── __main__.py      # CLI entry point (prepare / train / slice / volume)
     │   ├── log.py           # colored logging module
     │   ├── train.py         # DDP training loop
     │   ├── slice.py         # single-slice inference
@@ -96,6 +93,7 @@ Dependencies include:
     │   ├── n2i_environment.yml
     │   └── requirements.txt
     ├── baseline_config.yaml
+    ├── LICENSE
     ├── setup.py
     └── VERSION
 
@@ -108,21 +106,27 @@ git clone https://github.com/AISDC/Noise2Inverse360 denoise
 cd denoise
 conda env create -f envs/n2i_environment.yml
 conda activate n2i
-pip install .
+pip install . --no-deps
 ```
 
-### Config File
+### Data preparation
 
-Copy `baseline_config.yaml` into your reconstruction directory and
-modify:
+Create the two sub-reconstructions and config file in one step (run in
+the `tomocupy` environment):
 
--   Path to directory
--   Names of full reconstruction and sub-recon directories
+``` bash
+denoise prepare --out-path-name /path/to/experiment_rec \
+    [... your usual tomocupy recon options ...]
+```
+
+This produces `experiment_rec_0/`, `experiment_rec_1/`, and
+`experiment_rec_config.yaml` alongside the full reconstruction.
 
 ### Training
 
 ``` bash
-torchrun --nproc_per_node=2 -m denoise train --config /path/to/config.yaml --gpus 0,1
+PYTHONNOUSERSITE=1 torchrun --nproc_per_node=2 -m denoise train \
+    --config /path/to/experiment_rec_config.yaml --gpus 0,1
 ```
 
 Training workflow:
