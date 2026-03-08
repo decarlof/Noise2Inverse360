@@ -23,7 +23,7 @@ git clone https://github.com/AISDC/Noise2Inverse360 denoise
 cd denoise
 conda env create -f envs/n2i_environment.yml
 conda activate n2i
-pip install . --no-deps
+PYTHONNOUSERSITE=1 pip install . --no-deps
 ```
 
 Dependencies include:
@@ -108,7 +108,7 @@ git clone https://github.com/AISDC/Noise2Inverse360 denoise
 cd denoise
 conda env create -f envs/n2i_environment.yml
 conda activate n2i
-pip install . --no-deps
+PYTHONNOUSERSITE=1 pip install . --no-deps
 ```
 
 ### Data preparation

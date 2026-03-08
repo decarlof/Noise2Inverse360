@@ -26,7 +26,7 @@ Clone the `denoise <https://github.com/AISDC/Noise2Inverse360>`_ repository::
 Install the package::
 
     (n2i) $ cd denoise
-    (n2i) $ pip install .
+    (n2i) $ PYTHONNOUSERSITE=1 pip install .
 
 Test the installation
 =====================
@@ -81,7 +81,7 @@ To update your locally installed version::
 
     (n2i) $ cd denoise
     (n2i) $ git pull
-    (n2i) $ pip install .
+    (n2i) $ PYTHONNOUSERSITE=1 pip install .
 
 Dependencies
 ============
