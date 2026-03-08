@@ -250,6 +250,14 @@ The denoised slice is saved as a TIFF in
 denoise volume
 --------------
 
+.. note::
+
+   The GPU batch size for inference is determined automatically by profiling the
+   model against the configured patch size (``psz``) and the available GPU
+   memory. On a modern GPU (e.g. A100 80 GB) the batch size will be maximised
+   to saturate the GPU. For large volumes the initial RAM load (reading all TIFF
+   files from disk) typically takes longer than the GPU inference itself.
+
 Denoise the entire CT volume::
 
     (n2i) $ denoise volume --config my_experiment.yaml
