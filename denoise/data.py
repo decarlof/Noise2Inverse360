@@ -383,6 +383,11 @@ class TomoDatasetInfer(Dataset):
         W_pad = W + self.pad_right
         self.H_pad, self.W_pad = H_pad, W_pad
 
+        # Pre-pad H/W once so __getitem__ can index patches directly without
+        # copying full slices (reduces per-item memory movement from ~200 MB to ~1 MB).
+        self.vol_padded = _pad_hw_numpy(self.vol, self.pad_bottom, self.pad_right,
+                                        mode=pad_mode, constant_values=pad_constant)
+
         self.top_positions = _compute_positions(H_pad, self.ph, self.stride_h)
         self.left_positions = _compute_positions(W_pad, self.pw, self.stride_w)
 
@@ -533,30 +538,33 @@ class TomoDatasetInfer(Dataset):
 
     def __getitem__(self, i: int):
         pi = self.index[i]
-
-        # 1) build 2.5D stack [C, H, W]
-        stack = _build_2p5d_stack(
-            self.vol,
-            d_idx=pi.d_idx,
-            neighbors=self.neighbors,
-            edge_mode=self.edge_mode,
-            constant_values=self.edge_constant,
-        )
-
-        # 2) pad bottom/right in H/W so patch always fits
-        stack_pad = _pad_hw_numpy(
-            stack,
-            pad_bottom=self.pad_bottom,
-            pad_right=self.pad_right,
-            mode=self.pad_mode,
-            constant_values=self.pad_constant,
-        )  # [C, H_pad, W_pad]
-
-        # 3) crop patch aligned across all channels
+        D = self.D
+        neighbors = self.neighbors
         top, left = pi.top, pi.left
-        patch = stack_pad[:, top:top + self.ph, left:left + self.pw]  # [C, ph, pw]
 
-        #x_patch = torch.from_numpy(patch)  # float32 by construction
+        # Build patch [C, ph, pw] by indexing directly into the pre-padded volume.
+        # This avoids copying full slices (~200 MB) just to extract a small patch.
+        if self.edge_mode == 'constant':
+            C = 2 * neighbors + 1
+            patch = np.full((C, self.ph, self.pw), self.edge_constant, dtype=self.vol_padded.dtype)
+            for ci, off in enumerate(range(-neighbors, neighbors + 1)):
+                di = pi.d_idx + off
+                if 0 <= di < D:
+                    patch[ci] = self.vol_padded[di, top:top + self.ph, left:left + self.pw]
+        else:
+            di_list = []
+            for off in range(-neighbors, neighbors + 1):
+                di = pi.d_idx + off
+                if self.edge_mode == 'edge':
+                    di = min(max(di, 0), D - 1)
+                else:  # reflect
+                    while di < 0 or di >= D:
+                        if di < 0:
+                            di = -di
+                        if di >= D:
+                            di = 2 * (D - 1) - di
+                di_list.append(di)
+            patch = self.vol_padded[di_list, top:top + self.ph, left:left + self.pw]
 
         if not self.return_info:
             return patch
@@ -567,8 +575,8 @@ class TomoDatasetInfer(Dataset):
             "left": left,
             "ph": self.ph,
             "pw": self.pw,
-            "neighbors": self.neighbors,
-            "C": 2 * self.neighbors + 1,
+            "neighbors": neighbors,
+            "C": 2 * neighbors + 1,
             "H_in": self.H_in,
             "W_in": self.W_in,
             "H_pad": self.H_pad,

@@ -55,8 +55,11 @@ def run(args):
     ds_test = TomoDatasetInfer(params=params, start_slice=args.start_slice, end_slice=args.end_slice)
     log.info("Loaded %d slices of size %dx%d" % (ds_test.vol.shape[0], ds_test.vol.shape[1], ds_test.vol.shape[2]))
 
-    # determine maximum batch size given GPU system memory, model size, and image size
-    optimal_batch_size = InferenceBatchSizeOptimizer(model=model, input_shape=ds_test.vol[0].shape, device=dev,
+    # determine maximum batch size given GPU system memory, model size, and patch size
+    # NOTE: use patch size (psz, psz), not full slice size, so the optimizer profiles
+    # the actual inputs the model receives during inference.
+    patch_shape = (params['train']['psz'], params['train']['psz'])
+    optimal_batch_size = InferenceBatchSizeOptimizer(model=model, input_shape=patch_shape, device=dev,
                                                      max_batch_size=512, precision='fp32')
     stats = optimal_batch_size.profile()
     mbsz = stats['optimal_batch_size']
