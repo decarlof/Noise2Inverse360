@@ -214,6 +214,12 @@ def denoise_volume(args):
 
 
 def main():
+    # Prevent user-local packages in ~/.local/ from shadowing the conda
+    # environment (e.g. old typing_extensions breaking pydantic/albumentations).
+    if not os.environ.get('PYTHONNOUSERSITE'):
+        os.environ['PYTHONNOUSERSITE'] = '1'
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
     home = os.path.expanduser("~")
     logs_home = os.path.join(home, 'logs')
 
