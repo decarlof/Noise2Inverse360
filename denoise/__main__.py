@@ -147,6 +147,8 @@ def train(args):
             '--config', args.config,
             '--gpus', args.gpus,
         ]
+        if getattr(args, 'resume', False):
+            cmd.append('--resume')
         log.info("Launching training via torchrun (%d GPU(s)) ..." % n_gpus)
         result = subprocess.run(cmd, env=env)
         sys.exit(result.returncode)
@@ -292,9 +294,12 @@ def main():
         )
 
         if cmd == 'train':
-            # no extra args: DDP parameters (LOCAL_RANK, RANK, WORLD_SIZE) are
-            # injected automatically by torchrun as environment variables
-            pass
+            cmd_parser.add_argument(
+                '--resume',
+                action='store_true',
+                default=False,
+                help='Resume training from the last completed epoch (requires resume.pth in TrainOutput/)',
+            )
 
         elif cmd == 'slice':
             cmd_parser.add_argument(

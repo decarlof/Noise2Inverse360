@@ -51,10 +51,16 @@ def run(args):
     path_to_reconstructions = params['dataset']['directory_to_reconstructions']
     odir = path_to_reconstructions + '/' + 'TrainOutput'
     if rank == 0:
-        if os.path.isdir(odir):
-            shutil.rmtree(odir)
-        os.mkdir(odir)
-        os.mkdir(f'{odir}/results')
+        if getattr(args, 'resume', False):
+            if not os.path.isdir(odir):
+                raise RuntimeError("--resume specified but TrainOutput not found: %s" % odir)
+            if not os.path.isdir(f'{odir}/results'):
+                os.mkdir(f'{odir}/results')
+        else:
+            if os.path.isdir(odir):
+                shutil.rmtree(odir)
+            os.mkdir(odir)
+            os.mkdir(f'{odir}/results')
 
     torch.distributed.barrier()
 
@@ -74,28 +80,53 @@ def run(args):
     n_slices = params['train']['n_slices']
     model = unet_ns_gn(ich=n_slices, start_filter_size=16, channels_per_group=8).cuda()
     optimizer = torch.optim.Adam(model.parameters(), lr=params['train']['lr'])
-    log.info('Initializing model from scratch')
 
     model = DDP(model, device_ids=[local_rank], output_device=local_rank, find_unused_parameters=False)
     log.info("Number of model parameters: %s" % f"{count_parameters(model):,}")
-    model_updates = 0
 
     # loss functions and warmup criteria
     criterion = torch.nn.L1Loss()
     criterion_lcl = LCL()
     beta = .01
     warmup = params['train']['warmup']
-    continue_warmup = True
 
+    # training state (overwritten on --resume)
+    model_updates = 0
+    start_epoch = 1
+    continue_warmup = True
     train_loss, val_loss = [], []
     edge_values = []
     train_lcl_loss, val_lcl_loss = [], []
-
     best_val_loss, best_edge, best_lcl_loss = np.inf, 0, np.inf
     best_val_epoch, best_edge_epoch, best_lcl_epoch = 0, 0, 0
 
+    if getattr(args, 'resume', False):
+        resume_path = f"{odir}/resume.pth"
+        if not os.path.exists(resume_path):
+            raise RuntimeError("--resume specified but no resume checkpoint found at: %s" % resume_path)
+        ckpt = torch.load(resume_path, map_location='cpu')
+        model.module.load_state_dict(ckpt['model_state_dict'])
+        optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+        start_epoch     = ckpt['epoch'] + 1
+        model_updates   = ckpt['model_updates']
+        best_val_loss   = ckpt['best_val_loss']
+        best_lcl_loss   = ckpt['best_lcl_loss']
+        best_edge       = ckpt['best_edge']
+        best_val_epoch  = ckpt['best_val_epoch']
+        best_lcl_epoch  = ckpt['best_lcl_epoch']
+        best_edge_epoch = ckpt['best_edge_epoch']
+        train_loss      = ckpt['train_loss']
+        val_loss        = ckpt['val_loss']
+        train_lcl_loss  = ckpt['train_lcl_loss']
+        val_lcl_loss    = ckpt['val_lcl_loss']
+        edge_values     = ckpt['edge_values']
+        continue_warmup = ckpt['continue_warmup']
+        log.info("Resuming training from epoch %d (model_updates=%d)" % (start_epoch, model_updates))
+    else:
+        log.info('Initializing model from scratch')
+
     # start training
-    for epoch in range(1, params['train']['maxep'] + 1):
+    for epoch in range(start_epoch, params['train']['maxep'] + 1):
 
         step_losses, step_val_losses, step_lcl_loss, step_lcl_val_loss, step_edge_values = [], [], [], [], []
 
@@ -285,3 +316,23 @@ def run(args):
             plt.ylabel("EDGE Gradient")
             plt.savefig(f'{odir}/results/__edge_training.png')
             plt.close()
+
+        # Save resume checkpoint (overwritten each epoch; enables --resume after interruption)
+        torch.save({
+            'model_state_dict': deepcopy(model.module.state_dict()),
+            'optimizer_state_dict': deepcopy(optimizer.state_dict()),
+            'epoch': epoch,
+            'model_updates': model_updates,
+            'best_val_loss': best_val_loss,
+            'best_lcl_loss': best_lcl_loss,
+            'best_edge': best_edge,
+            'best_val_epoch': best_val_epoch,
+            'best_lcl_epoch': best_lcl_epoch,
+            'best_edge_epoch': best_edge_epoch,
+            'train_loss': train_loss,
+            'val_loss': val_loss,
+            'train_lcl_loss': train_lcl_loss,
+            'val_lcl_loss': val_lcl_loss,
+            'edge_values': edge_values,
+            'continue_warmup': continue_warmup,
+        }, f"{odir}/resume.pth")

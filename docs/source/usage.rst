@@ -228,10 +228,38 @@ in-place whenever a new best is found:
    produced ``best_val_model.pth`` at epoch 1705 (val loss 0.053) and
    ``best_edge_model.pth`` at epoch 1650 — both suitable for inference.
 
+Resuming interrupted training
+-----------------------------
+
+Every epoch, ``denoise train`` writes a ``resume.pth`` checkpoint to
+``TrainOutput/`` that captures the complete training state: model weights,
+optimiser state (Adam momentum), epoch counter, ``model_updates``, all best
+values, and the full loss history.  If training is interrupted for any reason,
+restart from the last completed epoch with ``--resume``::
+
+    (n2i) $ denoise train --config my_experiment.yaml --gpus 0,1 --resume
+
+Training continues from epoch ``N+1`` where ``N`` is the last fully completed
+epoch.  All three best-model checkpoints (``best_val_model.pth``,
+``best_lcl_model.pth``, ``best_edge_model.pth``) are preserved and remain
+usable for inference at any point.
+
+.. note::
+
+   ``resume.pth`` is overwritten at the end of every epoch.  It is safe to
+   run ``denoise slice`` or ``denoise volume`` while training is in progress —
+   the inference commands load the *best* checkpoints, not ``resume.pth``.
+
+.. warning::
+
+   Do **not** use ``--resume`` after changing the config (e.g. ``psz``,
+   ``n_slices``).  You may safely increase ``maxep`` to extend training beyond
+   the original limit.
+
 ::
 
     (n2i) $ denoise train -h
-    usage: denoise train [-h] --config FILE [--gpus IDS]
+    usage: denoise train [-h] --config FILE [--gpus IDS] [--resume]
 
     Train the Noise2Inverse model
 
@@ -239,6 +267,7 @@ in-place whenever a new best is found:
       -h, --help     show this help message and exit
       --config FILE  Path to the YAML configuration file
       --gpus IDS     Comma-separated list of visible GPU IDs (default: 0)
+      --resume       Resume from the last completed epoch (requires resume.pth in TrainOutput/)
 
 Inference
 =========
