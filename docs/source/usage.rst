@@ -330,38 +330,43 @@ The table below shows measured wall-clock times for a real APS 2-BM dataset:
 * **Training hardware**: 2× NVIDIA V100 32 GB
 * **Inference hardware**: 1× NVIDIA A100 80 GB (batch size 512, auto-selected)
 
+Two inference runs are shown — one with ``--checkpoint lcl`` (default) and one
+with ``--checkpoint val`` — to illustrate that checkpoint choice does not affect
+throughput: the model architecture is identical, only the weights differ.
+
 .. list-table::
    :header-rows: 1
-   :widths: 45 20 15
+   :widths: 40 18 18
 
    * - Stage
-     - Duration
-     - % of inference
+     - ``--checkpoint lcl``
+     - ``--checkpoint val``
    * - Training (1710/2000 epochs, killed by SIGKILL at ~85%)
      - 42 h 23 min
      - —
    * - Load + normalize TIFFs into RAM
      - 5 min 59 s
-     - 9 %
+     - 4 min 23 s
    * - Pre-pad + build patch index
      - 17 s
-     - < 1 %
+     - 18 s
    * - GPU inference (2962 batches × 512 patches)
      - 41 min 45 s
-     - 62 %
+     - 41 min 13 s
    * - Stitch patches → volume
      - 11 min 16 s
-     - 17 %
+     - 16 min 58 s
    * - Save 2426 TIFFs to disk
      - 7 min 27 s
-     - 11 %
+     - 7 min 41 s
    * - **Total inference**
      - **~67 min**
-     - 100 %
+     - **~71 min**
 
-GPU inference dominates the inference pipeline (62%). Loading from disk and
-stitching are the next largest contributors. Training time dwarfs inference
-by ~38×; using 4 GPUs would reduce training to roughly 10–12 hours.
+GPU inference (~41 min, 60–62% of total) is stable across runs. Loading
+variation reflects OS disk-cache state. Stitching variation (~11–17 min) is
+due to system memory pressure. Training time dwarfs inference by ~38×; using
+4 GPUs would reduce training to roughly 10–12 hours.
 
 Reusing a trained model
 =======================
