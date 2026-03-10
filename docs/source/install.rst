@@ -54,7 +54,7 @@ Test the installation
 
     Commands:
 
-        prepare   Create N2I sub-reconstructions with tomocupy and write a config file
+        prepare   Create Noise2Inverse (N2I) sub-reconstructions with tomocupy and write a config file
         train     Train the Noise2Inverse model
         slice     Denoise a single CT slice
         volume    Denoise the entire CT volume
@@ -121,14 +121,10 @@ The full dependency list is in ``envs/requirements.txt``. Key packages::
     scikit-image
     scipy
 
-.. warning::
+.. note::
 
-   Do **not** add ``opencv-python-headless`` to the environment.
-   That package requires ``numpy>=2``, which is incompatible with
-   ``torch 2.0.1`` and causes::
-
-       AttributeError: module 'numpy.core.multiarray' has no attribute 'signedinteger'
-
-   It was likely left behind from notebook-based exploratory work and is not
-   needed by any part of the pipeline. The ``numpy<2.0`` pin in
-   ``envs/requirements.txt`` guards against accidental upgrades.
+   ``opencv-python-headless`` is pulled in automatically as a transitive
+   dependency of ``albumentations``.  This is harmless because the
+   ``numpy<2.0`` pin ensures numpy 1.x is installed, which is compatible
+   with both torch and opencv.  Do **not** install ``opencv-python``
+   (the GUI variant) — it conflicts with the headless version.

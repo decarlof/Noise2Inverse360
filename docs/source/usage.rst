@@ -443,7 +443,7 @@ Command Reference
 
     Commands:
 
-        prepare   Create N2I sub-reconstructions with tomocupy and write a config file
+        prepare   Create Noise2Inverse (N2I) sub-reconstructions with tomocupy and write a config file
         train     Train the Noise2Inverse model
         slice     Denoise a single CT slice
         volume    Denoise the entire CT volume
