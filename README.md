@@ -21,20 +21,21 @@ Create the conda environment:
 ``` bash
 git clone https://github.com/AISDC/Noise2Inverse360 denoise
 cd denoise
-conda env create -f envs/n2i_environment.yml
-conda activate n2i
-PYTHONNOUSERSITE=1 pip install . --no-deps
+conda env create -f envs/denoise_environment.yml
+conda activate denoise
+pip install .
 ```
 
 Dependencies include:
 
 -   albumentations (data augmentation)
--   pytorch (2.0.1)
--   cuda (11.7)
+-   pytorch >= 2.0 (with CUDA support)
 -   tifffile
 -   tqdm
 -   matplotlib
--   skimage
+-   scikit-image
+-   scipy
+-   pyyaml
 
 
 ## Assumptions
@@ -77,7 +78,8 @@ Dependencies include:
     denoise/
     ├── denoise/
     │   ├── __init__.py
-    │   ├── __main__.py      # CLI entry point (prepare / train / slice / volume)
+    │   ├── __main__.py      # CLI entry point (prepare / train / slice / volume / register / search)
+    │   ├── registry.py      # local model registry (~/.denoise/registry/)
     │   ├── log.py           # colored logging module
     │   ├── train.py         # DDP training loop
     │   ├── slice.py         # single-slice inference
@@ -92,7 +94,7 @@ Dependencies include:
     ├── docs/                # Sphinx documentation
     │   └── source/img/      # workflow and example figures
     ├── envs/
-    │   ├── n2i_environment.yml
+    │   ├── denoise_environment.yml
     │   └── requirements.txt
     ├── baseline_config.yaml
     ├── LICENSE
@@ -106,41 +108,81 @@ Dependencies include:
 ``` bash
 git clone https://github.com/AISDC/Noise2Inverse360 denoise
 cd denoise
-conda env create -f envs/n2i_environment.yml
-conda activate n2i
-PYTHONNOUSERSITE=1 pip install . --no-deps
+conda env create -f envs/denoise_environment.yml
+conda activate denoise
+pip install .
 ```
 
 ### Data preparation
 
 Create the two sub-reconstructions and config file in one step (run in
-the `tomocupy` environment):
+the `tomocupy` environment).  Pass `--file-name` so that instrument
+metadata is read from the raw HDF5 and written into the config:
 
 ``` bash
-denoise prepare --out-path-name /path/to/experiment_rec \
-    [... your usual tomocupy recon options ...]
+(tomocupy) $ denoise prepare \
+                 --out-path-name /data/sample_rec \
+                 --file-name /data/sample.h5 \
+                 --reconstruction-type full \
+                 --binning 1 \
+                 --rotation-axis 1024.0
 ```
 
-This produces `experiment_rec_0/`, `experiment_rec_1/`, and
-`experiment_rec_config.yaml` alongside the full reconstruction.
+This produces `sample_rec_0/`, `sample_rec_1/`, and
+`sample_rec_config.yaml` alongside the full reconstruction.  The config
+includes a `metadata:` block with instrument provenance (beamline, energy,
+detector, scintillator, exposure time, etc.) used by the model registry.
 
 ### Training
 
+Before launching a new training run, `denoise train` automatically
+searches the local model registry (`~/.denoise/registry/`) for a model
+trained under the same instrument conditions.  If a match is found, it
+is listed and you are asked whether to proceed:
+
 ``` bash
-denoise train --config /path/to/experiment_rec_config.yaml --gpus 0,1
+(denoise) $ denoise train --config /data/sample_rec_config.yaml --gpus 0,1
+
+Registry search found 1 matching model(s):
+  [1] 2BM_pink_30keV_FLIROryx_20260219_143000  (9/9 criteria match — 100%)
+       beamline:   2-BM  |  mode: pink  |  energy: 30.0 keV  |  ...
+       registry path: /home/user/.denoise/registry/2BM_pink_30keV_FLIROryx_...
+
+Train a new model anyway? [y/N]
 ```
 
-Training workflow:
+Enter **N** to skip training and use the existing model, or **y** to
+train anyway.  To bypass the search entirely, add `--no-search`.
 
-1.  Load parameters from config file
-2.  Setup DDP (2 GPUs)
-3.  Create training output directory
-4.  Load dataset
-5.  Initialize model/optimizer
-6.  Randomly select patch size
-7.  Warmup with L1Loss before enabling LCL loss
-8.  Save best models based on validation + edge metrics
-9.  Save predicted images every 5 epochs
+Resume interrupted training with `--resume`:
+
+``` bash
+(denoise) $ denoise train --config /data/sample_rec_config.yaml --gpus 0,1 --resume
+```
+
+### Registering a trained model
+
+After training, register the model so it can be found automatically in
+future sessions:
+
+``` bash
+(denoise) $ denoise register \
+                --config /data/sample_rec_config.yaml \
+                --model-dir /data/sample_rec/TrainOutput
+```
+
+Models are stored in `~/.denoise/registry/` (never committed to git).
+On APS machines where tocai and tomo4 share a GPFS home directory, a
+model registered on tocai is immediately visible on tomo4.
+
+### Searching the registry
+
+``` bash
+(denoise) $ denoise search --config /data/new_sample_config.yaml
+```
+
+Prints all registry entries that match the noise fingerprint of the
+given config, ranked by score (fraction of criteria matched).
 
 ### Denoise Slice
 

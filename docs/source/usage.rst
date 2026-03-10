@@ -271,7 +271,7 @@ usable for inference at any point.
 ::
 
     (denoise) $ denoise train -h
-    usage: denoise train [-h] --config FILE [--gpus IDS] [--resume]
+    usage: denoise train [-h] --config FILE [--gpus IDS] [--resume] [--no-search]
 
     Train the Noise2Inverse model
 
@@ -280,6 +280,7 @@ usable for inference at any point.
       --config FILE  Path to the YAML configuration file
       --gpus IDS     Comma-separated list of visible GPU IDs (default: 0)
       --resume       Resume from the last completed epoch (requires resume.pth in TrainOutput/)
+      --no-search    Skip registry search before training
 
 Inference
 =========
@@ -489,6 +490,174 @@ Then run inference directly::
 
     (denoise) $ denoise volume --config new_experiment_config.yaml --checkpoint val
 
+Model Registry
+==============
+
+``denoise`` includes a local model registry so that trained models can be
+stored, searched, and reused without manual bookkeeping.  Models are stored
+in ``~/.denoise/registry/`` (override with the ``DENOISE_REGISTRY``
+environment variable).  Because tocai and tomo4 share the same home directory
+over GPFS, a model registered on tocai is immediately available on tomo4.
+
+.. note::
+
+   The registry lives entirely in your home directory and is **never** tracked
+   by git.
+
+Instrument metadata in the config
+----------------------------------
+
+When ``denoise prepare`` is run with ``--file-name``, it reads key instrument
+parameters directly from the raw HDF5 file and writes them into the
+``metadata:`` block of the generated config YAML::
+
+    metadata:
+      start_date: '2026-02-19T09:02:27-0600'
+      name: Chawla
+      beamline: 2-BM
+      current: 200.03 mA
+      energy: 30.0 keV
+      mode: pink
+      type: GGG:Eu - ESRF
+      active_thickness: 17.0 um
+      magnification: 9.835
+      resolution: 0.7015 um
+      manufacturer: FLIR
+      model: Oryx ORX-10G-310S9M
+      serial_number: 22150530
+      exposure_time: 0.035 s
+      temperature: 25.3 C
+      binning_x: 2.0
+      binning_y: 2.0
+      propagation_distance: 100.0 mm
+
+This block is the basis for all registry matching.  The fields used to decide
+whether two configs share the same noise fingerprint are:
+
+``beamline``, ``mode``, ``energy``, ``type`` (scintillator),
+``active_thickness``, ``serial_number``, ``exposure_time``,
+``binning_x``, ``binning_y``, and ``temperature`` (when present in both).
+
+``propagation_distance``, ``magnification``, ``current``, and experimenter
+fields are recorded for provenance but are not used in matching.
+
+Registering a trained model
+----------------------------
+
+After training is complete, register the model with its config::
+
+    (denoise) $ denoise register \
+                    --config /data/sample_rec_config.yaml \
+                    --model-dir /data/sample_rec/TrainOutput
+
+An entry is created automatically under a name derived from the metadata
+(e.g. ``2BM_pink_30keV_22150530_35ms_20260219_143000``).  To use a
+custom name::
+
+    (denoise) $ denoise register \
+                    --config /data/sample_rec_config.yaml \
+                    --model-dir /data/sample_rec/TrainOutput \
+                    --name 2BM_pink_30keV_FLIROryx
+
+The registry entry contains a copy of the config and all three checkpoint
+files (``best_val_model.pth``, ``best_lcl_model.pth``,
+``best_edge_model.pth``).
+
+::
+
+    (denoise) $ denoise register -h
+    usage: denoise register [-h] --config FILE --model-dir DIR [--name NAME]
+
+    Register a trained model in the local registry for later reuse.
+
+    options:
+      -h, --help        show this help message and exit
+      --config FILE     Path to the YAML configuration file used for training
+      --model-dir DIR   Directory containing the trained checkpoints (TrainOutput/)
+      --name NAME       Registry entry name (auto-generated from metadata if omitted)
+
+Searching the registry
+-----------------------
+
+To manually search the registry for models compatible with a given config::
+
+    (denoise) $ denoise search --config /data/new_sample_config.yaml
+
+Example output::
+
+    Registry search found 1 matching model(s):
+      [1] 2BM_pink_30keV_FLIROryx_20260219_143000  (9/9 criteria match — 100%)
+           beamline:            2-BM
+           mode:                pink
+           energy:              30.0 keV
+           type:                GGG:Eu - ESRF
+           serial_number:       22150530
+           exposure_time:       0.035 s
+           binning_x:           2.0
+           binning_y:           2.0
+           registry path:       /home/user/.denoise/registry/2BM_pink_30keV_FLIROryx_20260219_143000
+
+::
+
+    (denoise) $ denoise search -h
+    usage: denoise search [-h] --config FILE
+
+    Search the registry for models trained under compatible instrument conditions.
+
+    options:
+      -h, --help     show this help message and exit
+      --config FILE  Path to the YAML configuration file to match against
+
+Auto-search before training
+----------------------------
+
+By default, ``denoise train`` searches the registry automatically before
+launching a training run.  If matching models are found, it prints the results
+and asks for confirmation::
+
+    (denoise) $ denoise train --config /data/new_sample_config.yaml --gpus 0,1
+
+    Registry search found 1 matching model(s):
+      [1] 2BM_pink_30keV_FLIROryx_20260219_143000  (9/9 criteria match — 100%)
+           ...
+           registry path: /home/user/.denoise/registry/2BM_pink_30keV_FLIROryx_20260219_143000
+    A compatible model may already exist. Copy the registry path above as --model-dir for slice/volume inference.
+
+    Train a new model anyway? [y/N]
+
+Entering **N** (or pressing Enter) cancels training so you can use the
+existing model.  Entering **y** proceeds with training as normal.
+
+To skip the registry search entirely::
+
+    (denoise) $ denoise train --config my_experiment.yaml --gpus 0,1 --no-search
+
+Using a registered model for inference
+----------------------------------------
+
+Point ``--model-dir`` at the registry entry to use it for inference on a
+new dataset::
+
+    dataset:
+      directory_to_reconstructions: /data/new_experiment
+      sub_recon_name0: new_rec_0
+      sub_recon_name1: new_rec_1
+      full_recon_name: new_rec
+      mean4norm: 0.1234    # ← from the original training config
+      std4norm:  0.0567    # ← from the original training config
+
+Then run inference using the registered checkpoints::
+
+    (denoise) $ denoise volume \
+                    --config /data/new_experiment_config.yaml \
+                    --checkpoint val
+
+.. note::
+
+   Copy ``mean4norm`` and ``std4norm`` from the registered model's
+   ``config.yaml`` into the new config before running inference.  These
+   normalisation statistics must match the values used during training.
+
 Command Reference
 =================
 
@@ -508,3 +677,5 @@ Command Reference
         train     Train the Noise2Inverse model
         slice     Denoise a single CT slice
         volume    Denoise the entire CT volume
+        register  Register a trained model in the local registry (~/.denoise/registry/)
+        search    Search the registry for models matching a config noise fingerprint

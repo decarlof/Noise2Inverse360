@@ -95,6 +95,62 @@ def prepare(args):
         ]
         subprocess.run(cmd, check=True)
 
+    # --- instrument metadata from the raw HDF5 file ---
+    hdf_keys = [
+        '/process/acquisition/start_date',
+        '/measurement/sample/experimenter/name',
+        '/measurement/instrument/source/beamline',
+        '/measurement/instrument/source/current',
+        '/measurement/instrument/monochromator/energy',
+        '/measurement/instrument/monochromator/mode',
+        '/measurement/instrument/detection_system/scintillator/type',
+        '/measurement/instrument/detection_system/scintillator/active_thickness',
+        '/measurement/instrument/detection_system/objective/magnification',
+        '/measurement/instrument/detection_system/objective/resolution',
+        '/measurement/instrument/detector/manufacturer',
+        '/measurement/instrument/detector/model',
+        '/measurement/instrument/detector/serial_number',
+        '/measurement/instrument/detector/exposure_time',
+        '/measurement/instrument/detector/temperature',
+        '/measurement/instrument/detector/binning_x',
+        '/measurement/instrument/detector/binning_y',
+        '/measurement/instrument/detector_motor_stack/setup/z',
+    ]
+    metadata = {}
+    # Extract --file-name from the passthrough args
+    h5_file = None
+    for i, tok in enumerate(extra):
+        if tok == '--file-name' and i + 1 < len(extra):
+            h5_file = extra[i + 1]
+            break
+    if h5_file is not None:
+        try:
+            import meta as meta_lib
+            mp = meta_lib.read_meta.Hdf5MetadataReader(h5_file)
+            meta_dict = mp.readMetadata()
+            mp.close()
+            for hdf_path in hdf_keys:
+                if hdf_path not in meta_dict:
+                    continue
+                val   = meta_dict[hdf_path][0]
+                units = meta_dict[hdf_path][1]
+                key   = hdf_path.split('/')[-1]
+                if hdf_path == '/measurement/instrument/detector_motor_stack/setup/z':
+                    key = 'propagation_distance'
+                if key == 'mode':
+                    metadata[key] = {0: 'mono', 1: 'pink', 2: 'white'}.get(int(val), str(val))
+                elif units is None or isinstance(val, str):
+                    metadata[key] = val
+                else:
+                    metadata[key] = '%s %s' % (val, units)
+            log.info("Instrument metadata read from: %s" % h5_file)
+        except ImportError:
+            log.warning("'meta' library not installed — skipping metadata block.")
+        except Exception as exc:
+            log.warning("Could not read metadata from %s: %s" % (h5_file, exc))
+    else:
+        log.warning("--file-name not found in tomocupy args — skipping metadata block.")
+
     config = {
         'dataset': {
             'directory_to_reconstructions': str(parent_dir),
@@ -106,6 +162,8 @@ def prepare(args):
                    'warmup': 2000, 'maxep': 2000},
         'infer':  {'overlap': 0.5, 'window': 'cosine'},
     }
+    if metadata:
+        config['metadata'] = metadata
     config_path = parent_dir / ('%s_config.yaml' % rec_name)
     with open(config_path, 'w') as fh:
         yaml.dump(config, fh, default_flow_style=False, sort_keys=False)
@@ -116,6 +174,24 @@ def prepare(args):
         "  conda activate denoise\n"
         "  denoise train --config %s --gpus 0,1" % config_path
     )
+
+
+def _print_registry_matches(matches):
+    """Print a formatted table of registry search results."""
+    log.warning("Registry search found %d matching model(s):" % len(matches))
+    for i, m in enumerate(matches):
+        meta = m['config'].get('metadata', {})
+        log.warning(
+            "  [%d] %s  (%d/%d criteria match — %.0f%%)" % (
+                i + 1, m['dir'].name, m['matched'], m['total'],
+                100 * m['score'],
+            )
+        )
+        for key in ('beamline', 'mode', 'energy', 'type', 'serial_number',
+                    'exposure_time', 'binning_x', 'binning_y', 'temperature'):
+            if key in meta:
+                log.warning("       %-20s %s" % (key + ':', meta[key]))
+        log.warning("       %-20s %s" % ('registry path:', m['dir']))
 
 
 def train(args):
@@ -132,9 +208,28 @@ def train(args):
         Path to the YAML configuration file.
     args.gpus : str
         Comma-separated list of GPU IDs (e.g. ``0,1``).
+    args.no_search : bool
+        Skip registry search before training.
     """
     if 'LOCAL_RANK' not in os.environ:
-        # Not inside a torchrun context yet — re-launch via torchrun.
+        # Not inside a torchrun context yet — optionally search registry,
+        # then re-launch via torchrun.
+        if not getattr(args, 'no_search', False):
+            from denoise import registry as reg
+            matches = reg.search(args.config)
+            if matches:
+                _print_registry_matches(matches)
+                log.warning(
+                    "A compatible model may already exist. "
+                    "Copy the registry path above as --model-dir for slice/volume inference."
+                )
+                answer = input(
+                    "\nTrain a new model anyway? [y/N] "
+                ).strip().lower()
+                if answer not in ('y', 'yes'):
+                    log.info("Training cancelled. Use an existing model from the registry.")
+                    sys.exit(0)
+
         import subprocess
         n_gpus = len(args.gpus.split(',')) if args.gpus else 1
         env = {**os.environ, 'PYTHONNOUSERSITE': '1'}
@@ -163,6 +258,49 @@ def train(args):
 
     from denoise import train as train_mod
     train_mod.run(args)
+
+
+def register_model(args):
+    """Register a trained model in the local registry."""
+    import pathlib
+    from denoise import registry as reg
+
+    cfg_path = pathlib.Path(args.config)
+    if not cfg_path.exists():
+        log.error("Config not found: %s" % cfg_path)
+        sys.exit(1)
+
+    model_dir = pathlib.Path(args.model_dir)
+    if not model_dir.is_dir():
+        log.error("Model directory not found: %s" % model_dir)
+        sys.exit(1)
+
+    entry_dir, copied = reg.register(cfg_path, model_dir, name=args.name)
+    if not copied:
+        log.error("No checkpoint files found in %s" % model_dir)
+        sys.exit(1)
+
+    log.info("Registered model at: %s" % entry_dir)
+    log.info("Checkpoints copied: %s" % ', '.join(copied))
+    log.info("Registry: %s" % reg.REGISTRY_DIR)
+
+
+def search_registry(args):
+    """Search the registry for models matching the config's noise fingerprint."""
+    import pathlib
+    from denoise import registry as reg
+
+    cfg_path = pathlib.Path(args.config)
+    if not cfg_path.exists():
+        log.error("Config not found: %s" % cfg_path)
+        sys.exit(1)
+
+    matches = reg.search(cfg_path)
+    if not matches:
+        log.info("No matching models found in registry (%s)." % reg.REGISTRY_DIR)
+        return
+
+    _print_registry_matches(matches)
 
 
 def denoise_slice(args):
@@ -300,6 +438,12 @@ def main():
                 default=False,
                 help='Resume training from the last completed epoch (requires resume.pth in TrainOutput/)',
             )
+            cmd_parser.add_argument(
+                '--no-search',
+                action='store_true',
+                default=False,
+                help='Skip registry search before training',
+            )
 
         elif cmd == 'slice':
             cmd_parser.add_argument(
@@ -341,6 +485,52 @@ def main():
             )
 
         cmd_parser.set_defaults(_func=func)
+
+    # --- register ---
+    reg_parser = subparsers.add_parser(
+        'register',
+        help='Register a trained model in the local registry (~/.denoise/registry/)',
+        description='Register a trained model in the local registry for later reuse.',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    reg_parser.add_argument(
+        '--config',
+        type=str,
+        required=True,
+        metavar='FILE',
+        help='Path to the YAML configuration file used for training',
+    )
+    reg_parser.add_argument(
+        '--model-dir',
+        type=str,
+        required=True,
+        metavar='DIR',
+        help='Directory containing the trained checkpoints (TrainOutput/)',
+    )
+    reg_parser.add_argument(
+        '--name',
+        type=str,
+        default=None,
+        metavar='NAME',
+        help='Registry entry name (auto-generated from metadata if omitted)',
+    )
+    reg_parser.set_defaults(_func=register_model)
+
+    # --- search ---
+    srch_parser = subparsers.add_parser(
+        'search',
+        help='Search the registry for models matching a config noise fingerprint',
+        description='Search the registry for models trained under compatible instrument conditions.',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    srch_parser.add_argument(
+        '--config',
+        type=str,
+        required=True,
+        metavar='FILE',
+        help='Path to the YAML configuration file to match against',
+    )
+    srch_parser.set_defaults(_func=search_registry)
 
     args = parser.parse_args()
 
