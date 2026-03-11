@@ -137,6 +137,9 @@ def prepare(args):
                 key   = hdf_path.split('/')[-1]
                 if hdf_path == '/measurement/instrument/detector_motor_stack/setup/z':
                     key = 'propagation_distance'
+                # Convert numpy scalars to Python natives to avoid numpy YAML tags
+                if hasattr(val, 'item'):
+                    val = val.item()
                 if key == 'mode':
                     metadata[key] = {0: 'mono', 1: 'pink', 2: 'white'}.get(int(val), str(val))
                 elif units is None or isinstance(val, str):

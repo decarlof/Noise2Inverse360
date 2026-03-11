@@ -45,7 +45,12 @@ REGISTRY_DIR = pathlib.Path(
 def _load_config(config_path):
     import yaml
     with open(config_path) as fh:
-        return yaml.safe_load(fh)
+        content = fh.read()
+    try:
+        return yaml.safe_load(content)
+    except yaml.constructor.ConstructorError:
+        # Older configs may contain numpy-tagged scalars; fall back to full loader.
+        return yaml.load(content, Loader=yaml.UnsafeLoader)
 
 
 def _slug(meta):
