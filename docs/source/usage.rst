@@ -612,8 +612,9 @@ Auto-search before training
 ----------------------------
 
 By default, ``denoise train`` searches the registry automatically before
-launching a training run.  If matching models are found, it prints the results
-and asks for confirmation::
+launching a training run.
+
+**Match found** — compatible model(s) exist::
 
     (denoise) $ denoise train --config /data/new_sample_config.yaml --gpus 0,1
 
@@ -627,6 +628,20 @@ and asks for confirmation::
 
 Entering **N** (or pressing Enter) cancels training so you can use the
 existing model.  Entering **y** proceeds with training as normal.
+
+**No match found** — registry is searched but no compatible model exists::
+
+    (denoise) $ denoise train --config /data/new_sample_config.yaml --gpus 0,1
+
+    Registry search: no matching models found. Existing models:
+      - 2BM_pink_30keV_FLIROryx_22150530
+
+    Proceed with new training? [Y/n]
+
+Pressing Enter (or **Y**) starts training.  Entering **n** cancels so you can
+inspect the listed models manually before deciding.  If the registry is empty
+the message reads ``Registry search: registry is empty.`` and the same
+``[Y/n]`` prompt is shown.
 
 To skip the registry search entirely::
 

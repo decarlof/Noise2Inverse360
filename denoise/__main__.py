@@ -232,6 +232,20 @@ def train(args):
                 if answer not in ('y', 'yes'):
                     log.info("Training cancelled. Use an existing model from the registry.")
                     sys.exit(0)
+            else:
+                all_entries = reg.list_registry()
+                if all_entries:
+                    log.info("Registry search: no matching models found. Existing models:")
+                    for entry_name, _ in all_entries:
+                        log.info("  - %s" % entry_name)
+                else:
+                    log.info("Registry search: registry is empty.")
+                answer = input(
+                    "\nProceed with new training? [Y/n] "
+                ).strip().lower()
+                if answer in ('n', 'no'):
+                    log.info("Training cancelled.")
+                    sys.exit(0)
 
         import subprocess
         n_gpus = len(args.gpus.split(',')) if args.gpus else 1
