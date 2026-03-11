@@ -16,19 +16,19 @@ Create sub-reconstructions and config (run in the tomocupy environment)::
 
 Train the model::
 
-    (denoise) $ denoise train --config /data/exp_rec_config.yaml --gpus 0,1
+    (denoise) $ denoise train --config /data/sample_rec_config.yaml --gpus 0,1
 
 Denoise a single CT slice::
 
-    (denoise) $ denoise slice --config baseline_config.yaml --slice-number 500
+    (denoise) $ denoise slice --config /data/sample_rec_config.yaml --slice-number 500
 
 Denoise the full CT volume::
 
-    (denoise) $ denoise volume --config baseline_config.yaml
+    (denoise) $ denoise volume --config /data/sample_rec_config.yaml
 
 Denoise a sub-volume (slices 200 to 400)::
 
-    (denoise) $ denoise volume --config baseline_config.yaml \\
+    (denoise) $ denoise volume --config /data/sample_rec_config.yaml \\
                 --start-slice 200 --end-slice 400
 """
 

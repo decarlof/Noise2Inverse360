@@ -178,7 +178,7 @@ model registered on tocai is immediately visible on tomo4.
 ### Searching the registry
 
 ``` bash
-(denoise) $ denoise search --config /data/new_sample_config.yaml
+(denoise) $ denoise search --config /data/new_sample_rec_config.yaml
 ```
 
 Prints all registry entries that match the noise fingerprint of the
@@ -187,7 +187,7 @@ given config, ranked by score (fraction of criteria matched).
 ### Denoise Slice
 
 ``` bash
-denoise slice --config /path/to/config.yaml --slice-number 500
+denoise slice --config /data/sample_rec_config.yaml --slice-number 500
 ```
 
 -   Loads pretrained model
@@ -199,8 +199,8 @@ denoise slice --config /path/to/config.yaml --slice-number 500
 ### Denoise Volume
 
 ``` bash
-denoise volume --config /path/to/config.yaml
-denoise volume --config /path/to/config.yaml --start-slice 500 --end-slice 600
+denoise volume --config /data/sample_rec_config.yaml
+denoise volume --config /data/sample_rec_config.yaml --start-slice 500 --end-slice 600
 ```
 
 -   Optionally denoise slice subset

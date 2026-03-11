@@ -120,6 +120,14 @@ the same options, producing::
 Do **not** include ``--start-proj``, ``--proj-step``, or ``--out-path-name``
 in the extra arguments — they are set automatically by ``denoise prepare``.
 
+When finished, ``denoise prepare`` prints the full path to the config file
+and the exact command to run next::
+
+    Config written to: /local/data/tomo/sample_rec_config.yaml
+    Next step:
+      conda activate denoise
+      denoise train --config /local/data/tomo/sample_rec_config.yaml --gpus 0,1
+
 ::
 
     (tomocupy) $ denoise prepare -h
@@ -144,7 +152,7 @@ If you prefer to set up the config manually, copy the baseline template to the
 **parent directory** of your reconstructions and edit it::
 
     (denoise) $ cp /path/to/Noise2Inverse360/baseline_config.yaml \
-               /path/to/experiment_config.yaml
+               /data/sample_rec_config.yaml
 
 Set at minimum:
 
@@ -182,18 +190,65 @@ is required.
    ``denoise train`` internally sets ``PYTHONNOUSERSITE=1`` to prevent
    user-local packages in ``~/.local/`` from shadowing the conda environment.
 
+Before launching training, ``denoise train`` automatically searches the local
+model registry for a model trained under the same instrument conditions and
+prompts you with the result.
+
+**Case 1 — a compatible model already exists:**
+
+.. code-block:: text
+
+    (denoise) $ denoise train --config /data/sample_rec_config.yaml --gpus 0,1
+
+    Registry search found 1 matching model(s):
+      [1] 2BM_pink_30keV_FLIROryx_22150530  (9/9 criteria match — 100%)
+           beamline:            2-BM
+           mode:                pink
+           energy:              30.0 keV
+           type:                GGG:Eu - ESRF
+           serial_number:       22150530
+           exposure_time:       0.035 s
+           binning_x:           2
+           binning_y:           2
+           registry path:       /home/beams/TOMO/.denoise/registry/2BM_pink_30keV_FLIROryx_22150530
+    A compatible model may already exist. Copy the registry path above as --model-dir for slice/volume inference.
+
+    Train a new model anyway? [y/N]
+
+Press **Enter** (or **N**) to cancel and reuse the existing model.
+Enter **y** to proceed with a new training run.
+
+**Case 2 — no compatible model found:**
+
+.. code-block:: text
+
+    (denoise) $ denoise train --config /data/sample_rec_config.yaml --gpus 0,1
+
+    Registry search: no matching models found. Existing models:
+      - 2BM_pink_30keV_FLIROryx_22150530
+
+    Proceed with new training? [Y/n]
+
+Press **Enter** (or **Y**) to start training.
+Enter **n** to cancel and inspect the listed models manually.
+If the registry is empty the message reads ``Registry search: registry is empty.``
+
+To skip the registry search entirely, add ``--no-search``::
+
+    (denoise) $ denoise train --config /data/sample_rec_config.yaml --gpus 0,1 --no-search
+
 Launch training with two GPUs::
 
-    (denoise) $ denoise train --config my_experiment.yaml --gpus 0,1
+    (denoise) $ denoise train --config /data/sample_rec_config.yaml --gpus 0,1
 
 For single-GPU training::
 
-    (denoise) $ denoise train --config my_experiment.yaml --gpus 0
+    (denoise) $ denoise train --config /data/sample_rec_config.yaml --gpus 0
 
 Any number of GPUs can be used — just list all the IDs. For example, on a
 4-GPU machine::
 
-    (denoise) $ denoise train --config my_experiment.yaml --gpus 0,1,2,3
+    (denoise) $ denoise train --config /data/sample_rec_config.yaml --gpus 0,1,2,3
 
 ``denoise train`` counts the comma-separated IDs and sets ``--nproc_per_node``
 accordingly. DDP splits the mini-batch across all GPUs, so doubling the number
@@ -249,7 +304,7 @@ optimiser state (Adam momentum), epoch counter, ``model_updates``, all best
 values, and the full loss history.  If training is interrupted for any reason,
 restart from the last completed epoch with ``--resume``::
 
-    (denoise) $ denoise train --config my_experiment.yaml --gpus 0,1 --resume
+    (denoise) $ denoise train --config sample_rec_config.yaml --gpus 0,1 --resume
 
 Training continues from epoch ``N+1`` where ``N`` is the last fully completed
 epoch.  All three best-model checkpoints (``best_val_model.pth``,
@@ -297,7 +352,7 @@ denoise slice
 
 Denoise a single CT slice::
 
-    (denoise) $ denoise slice --config my_experiment.yaml --slice-number 500
+    (denoise) $ denoise slice --config sample_rec_config.yaml --slice-number 500
     2025-01-01 10:00:00,000 - Loading slice 500
     2025-01-01 10:00:05,000 - Saved denoised slice to .../denoised_slices/00500.tiff
 
@@ -331,7 +386,7 @@ denoise volume
 
 Denoise the entire CT volume::
 
-    (denoise) $ denoise volume --config my_experiment.yaml
+    (denoise) $ denoise volume --config sample_rec_config.yaml
     2025-01-01 10:00:00,000 - Loading data into CPU memory, it will take a while ...
     2025-01-01 10:00:30,000 - Loaded 1000 slices of size 2048x2048
     2025-01-01 10:00:30,100 - Patch volume size: 65536x256x256
@@ -343,7 +398,7 @@ Denoise the entire CT volume::
 
 To denoise only a sub-volume (slices 200 to 400)::
 
-    (denoise) $ denoise volume --config my_experiment.yaml --start-slice 200 --end-slice 400
+    (denoise) $ denoise volume --config sample_rec_config.yaml --start-slice 200 --end-slice 400
 
 The denoised volume is saved as individual TIFF files in
 ``<directory_to_reconstructions>/denoised_volume/``.
@@ -488,7 +543,7 @@ does not matter.
 
 Then run inference directly::
 
-    (denoise) $ denoise volume --config new_experiment_config.yaml --checkpoint val
+    (denoise) $ denoise volume --config new_sample_rec_config.yaml --checkpoint val
 
 Model Registry
 ==============
@@ -581,7 +636,7 @@ Searching the registry
 
 To manually search the registry for models compatible with a given config::
 
-    (denoise) $ denoise search --config /data/new_sample_config.yaml
+    (denoise) $ denoise search --config /data/new_sample_rec_config.yaml
 
 Example output::
 
@@ -616,7 +671,7 @@ launching a training run.
 
 **Match found** — compatible model(s) exist::
 
-    (denoise) $ denoise train --config /data/new_sample_config.yaml --gpus 0,1
+    (denoise) $ denoise train --config /data/new_sample_rec_config.yaml --gpus 0,1
 
     Registry search found 1 matching model(s):
       [1] 2BM_pink_30keV_FLIROryx_20260219_143000  (9/9 criteria match — 100%)
@@ -631,7 +686,7 @@ existing model.  Entering **y** proceeds with training as normal.
 
 **No match found** — registry is searched but no compatible model exists::
 
-    (denoise) $ denoise train --config /data/new_sample_config.yaml --gpus 0,1
+    (denoise) $ denoise train --config /data/new_sample_rec_config.yaml --gpus 0,1
 
     Registry search: no matching models found. Existing models:
       - 2BM_pink_30keV_FLIROryx_22150530
@@ -645,7 +700,7 @@ the message reads ``Registry search: registry is empty.`` and the same
 
 To skip the registry search entirely::
 
-    (denoise) $ denoise train --config my_experiment.yaml --gpus 0,1 --no-search
+    (denoise) $ denoise train --config sample_rec_config.yaml --gpus 0,1 --no-search
 
 Using a registered model for inference
 ----------------------------------------
@@ -664,7 +719,7 @@ new dataset::
 Then run inference using the registered checkpoints::
 
     (denoise) $ denoise volume \
-                    --config /data/new_experiment_config.yaml \
+                    --config /data/new_sample_rec_config.yaml \
                     --checkpoint val
 
 .. note::
