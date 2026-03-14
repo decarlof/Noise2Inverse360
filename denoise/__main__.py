@@ -427,11 +427,6 @@ def main():
         choices=['recon', 'recon_steps'],
         help='tomocupy subcommand to use for sub-reconstructions (default: recon_steps)',
     )
-    prep_parser.add_argument(
-        'tomocupy_args',
-        nargs=argparse.REMAINDER,
-        help='All other tomocupy recon arguments passed through verbatim',
-    )
     prep_parser.set_defaults(_func=prepare)
 
     for cmd, func, text in cmd_parsers:
@@ -557,11 +552,18 @@ def main():
     )
     srch_parser.set_defaults(_func=search_registry)
 
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
 
     if not hasattr(args, '_func'):
         parser.print_help()
         sys.exit(0)
+
+    # For 'prepare', unknown args are the passthrough tomocupy arguments.
+    # For all other commands, unknown args are an error.
+    if getattr(args, '_func', None) is prepare:
+        args.tomocupy_args = unknown
+    elif unknown:
+        parser.error('unrecognized arguments: %s' % ' '.join(unknown))
 
     try:
         args._func(args)
