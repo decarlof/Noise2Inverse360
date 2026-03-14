@@ -74,10 +74,26 @@ def prepare(args):
     import pathlib
     import yaml
 
-    out_path   = pathlib.Path(args.out_path_name)
+    extra = args.tomocupy_args  # passthrough list
+
+    if args.out_path_name:
+        out_path = pathlib.Path(args.out_path_name)
+    else:
+        # Derive from --file-name using tomocupy's convention:
+        # /a/b/Li/sample.h5 -> /a/b/Li_rec/sample_rec
+        h5_file = None
+        for i, tok in enumerate(extra):
+            if tok == '--file-name' and i + 1 < len(extra):
+                h5_file = extra[i + 1]
+                break
+        if h5_file is None:
+            raise RuntimeError("--out-path-name omitted but --file-name not found in passthrough args.")
+        h5_path = pathlib.Path(h5_file)
+        out_path = h5_path.parent.parent / (h5_path.parent.name + '_rec') / (h5_path.stem + '_rec')
+        log.info("--out-path-name not specified, derived from --file-name: %s" % out_path)
+
     parent_dir = out_path.parent
     rec_name   = out_path.name
-    extra      = args.tomocupy_args  # passthrough list
 
     # Reject forbidden flags
     forbidden = {'--start-proj', '--proj-step', '--out-path-name'}
@@ -416,9 +432,10 @@ def main():
     prep_parser.add_argument(
         '--out-path-name',
         type=str,
-        required=True,
+        default=None,
         metavar='PATH',
-        help='Base output path of the full reconstruction (tomocupy --out-path-name)',
+        help='Base output path for reconstructions. If omitted, derived from --file-name '
+             'using tomocupy convention: <parent>_rec/<stem>_rec',
     )
     prep_parser.add_argument(
         '--recon-command',
