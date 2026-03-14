@@ -24,25 +24,23 @@ denoise prepare
 
 The ``denoise prepare`` command automates the two tomocupy reconstructions
 needed for Noise2Inverse and writes the configuration file in a single step.
-It runs in the ``tomocupy`` environment (where ``tomocupy`` is available),
-before switching to the ``denoise`` environment for training.
+Both ``tomocupy`` and ``denoise`` run in the same ``denoise`` conda environment.
 
-Pass ``--out-path-name`` pointing to the **full reconstruction** that already
-exists, followed by all the ``tomocupy recon`` options you normally use
-(``--file-name``, ``--reconstruction-type``, ``--binning``, etc.).  For
-example::
+Pass ``--file-name`` and all the ``tomocupy recon_steps`` options you normally
+use. ``--out-path-name`` is **optional**: when omitted, the output path is
+derived from ``--file-name`` using the same convention as tomocupy
+(``<parent>_rec/<stem>_rec``). For example::
 
-    (tomocupy) $ denoise prepare \
-                     --out-path-name /local/data/tomo/sample_rec \
+    (denoise) $ denoise prepare \
                      --file-name /local/data/tomo/sample.h5 \
                      --reconstruction-type full \
                      --binning 1 \
                      --rotation-axis 1024.0
 
-This runs ``tomocupy recon`` twice (even and odd projections) using exactly
-the same options, producing::
+This runs ``tomocupy recon_steps`` twice (even and odd projections) using
+exactly the same options, producing::
 
-    /local/data/tomo/
+    /local/data/tomo_rec/
         sample_rec/            ← full reconstruction (already exists)
         sample_rec_0/          ← even-angle sub-reconstruction (N2I input A)
         sample_rec_1/          ← odd-angle sub-reconstruction  (N2I input B)
@@ -57,24 +55,24 @@ the same options, producing::
 When finished, ``denoise prepare`` prints the full path to the config file
 and the exact command to run next::
 
-    Config written to: /local/data/tomo/sample_rec_config.yaml
+    Config written to: /local/data/tomo_rec/sample_rec_config.yaml
     Next step:
       conda activate denoise
-      denoise train --config /local/data/tomo/sample_rec_config.yaml --gpus 0,1
+      denoise train --config /local/data/tomo_rec/sample_rec_config.yaml --gpus 0,1
 
 ::
 
-    (tomocupy) $ denoise prepare -h
-    usage: denoise prepare [-h] --out-path-name PATH ...
+    (denoise) $ denoise prepare -h
+    usage: denoise prepare [-h] [--out-path-name PATH] [--recon-command {recon,recon_steps}] ...
 
     Create Noise2Inverse (N2I) sub-reconstructions with tomocupy and write a config file
 
-    positional arguments:
-      tomocupy_args         All other tomocupy recon arguments passed through verbatim
-
     options:
-      -h, --help            show this help message and exit
-      --out-path-name PATH  Base output path of the full reconstruction
+      -h, --help                              show this help message and exit
+      --out-path-name PATH                    Base output path for reconstructions. If omitted,
+                                              derived from --file-name using tomocupy convention:
+                                              <parent>_rec/<stem>_rec
+      --recon-command {recon,recon_steps}     tomocupy subcommand to use (default: recon_steps)
 
 .. note::
    **Manual sub-reconstruction (non-tomocupy or non-APS HDF5 data)**
@@ -91,12 +89,12 @@ and the exact command to run next::
    ``--proj-step``::
 
        # even-indexed projections (0, 2, 4, ...)
-       (tomocupy) $ tomocupy recon --start-proj 0 --proj-step 2 \
+       (denoise) $ tomocupy recon_steps --start-proj 0 --proj-step 2 \
                        --out-path-name /path/to/sample_rec_0 \
                        [... your usual tomocupy options ...]
 
        # odd-indexed projections (1, 3, 5, ...)
-       (tomocupy) $ tomocupy recon --start-proj 1 --proj-step 2 \
+       (denoise) $ tomocupy recon_steps --start-proj 1 --proj-step 2 \
                        --out-path-name /path/to/sample_rec_1 \
                        [... your usual tomocupy options ...]
 
@@ -135,8 +133,7 @@ and the exact command to run next::
 
    **Practical example** (APS 2-BM, February 2026 Chawla dataset)::
 
-       # even-indexed projections
-       (tomocupy) $ tomocupy recon_steps \
+       (denoise) $ denoise prepare \
                        --file-name /data3/2BM/2026-02/Chawla/As-cast-Mod2-100mm_115.h5 \
                        --reconstruction-type full \
                        --rotation-axis 1625 \
@@ -146,44 +143,15 @@ and the exact command to run next::
                        --retrieve-phase-alpha 0.0005 \
                        --pixel-size 0.69 \
                        --fbp-filter ramp \
-                       --remove-stripe-method fw \
-                       --start-proj 0 --proj-step 2 \
-                       --out-path-name /data3/2BM/2026-02/Chawla_rec/As-cast-Mod2-100mm_115_rec_0
-
-       # odd-indexed projections
-       (tomocupy) $ tomocupy recon_steps \
-                       --file-name /data3/2BM/2026-02/Chawla/As-cast-Mod2-100mm_115.h5 \
-                       --reconstruction-type full \
-                       --rotation-axis 1625 \
-                       --propagation-distance 100 \
-                       --energy 30 \
-                       --retrieve-phase-method paganin \
-                       --retrieve-phase-alpha 0.0005 \
-                       --pixel-size 0.69 \
-                       --fbp-filter ramp \
-                       --remove-stripe-method fw \
-                       --start-proj 1 --proj-step 2 \
-                       --out-path-name /data3/2BM/2026-02/Chawla_rec/As-cast-Mod2-100mm_115_rec_1
+                       --remove-stripe-method fw
 
    This produces::
 
        /data3/2BM/2026-02/Chawla_rec/
-           As-cast-Mod2-100mm_115_rec/    ← full reconstruction (already exists)
-           As-cast-Mod2-100mm_115_rec_0/  ← even-angle sub-reconstruction
-           As-cast-Mod2-100mm_115_rec_1/  ← odd-angle sub-reconstruction
-
-   Create the config::
-
-       (denoise) $ cp /path/to/Noise2Inverse360/baseline_config.yaml \
-                  /data3/2BM/2026-02/Chawla_rec/As-cast-Mod2-100mm_115_config.yaml
-
-   .. code-block:: yaml
-
-       dataset:
-         directory_to_reconstructions: /data3/2BM/2026-02/Chawla_rec
-         sub_recon_name0: As-cast-Mod2-100mm_115_rec_0
-         sub_recon_name1: As-cast-Mod2-100mm_115_rec_1
-         full_recon_name: As-cast-Mod2-100mm_115_rec
+           As-cast-Mod2-100mm_115_rec/            ← full reconstruction (already exists)
+           As-cast-Mod2-100mm_115_rec_0/          ← even-angle sub-reconstruction
+           As-cast-Mod2-100mm_115_rec_1/          ← odd-angle sub-reconstruction
+           As-cast-Mod2-100mm_115_rec_config.yaml ← ready-to-use config
 
 Training
 ========
@@ -194,13 +162,6 @@ denoise train
 Train the Noise2Inverse model. ``denoise train`` automatically launches
 ``torchrun`` with the correct settings — no manual ``torchrun`` invocation
 is required.
-
-.. note::
-
-   Make sure the ``denoise`` conda environment is active before running training.
-   If you used ``tomocupy`` to create the sub-reconstructions, switch back first::
-
-       $ conda activate denoise
 
 .. note::
 
