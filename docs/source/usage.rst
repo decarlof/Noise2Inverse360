@@ -19,84 +19,46 @@ predict one from the other, removing noise without any clean reference images.
    You must create the two sub-reconstructions from the raw projection data
    before proceeding.
 
-denoise prepare
----------------
+Sub-reconstructions with tomocupy
+----------------------------------
 
-The ``denoise prepare`` command automates the two tomocupy reconstructions
-needed for Noise2Inverse and writes the configuration file in a single step.
-Both ``tomocupy`` and ``denoise`` run in the same ``denoise`` conda environment.
+Run ``tomocupy recon_steps`` twice with the same parameters as the full
+reconstruction, adding ``--start-proj``, ``--proj-step 2``, and
+``--out-path-name`` to select even and odd projections respectively.
+tomocupy writes output to ``<parent>_rec/`` by convention, so the
+sub-reconstructions land next to the full reconstruction automatically::
 
-Pass ``--file-name`` and all the ``tomocupy recon_steps`` options you normally
-use. ``--out-path-name`` is **optional**: when omitted, the output path is
-derived from ``--file-name`` using the same convention as tomocupy
-(``<parent>_rec/<stem>_rec``). For example::
+    # even-indexed projections (0, 2, 4, ...)
+    (tomocupy) $ tomocupy recon_steps \
+                     --start-proj 0 --proj-step 2 \
+                     --out-path-name /local/data/tomo_rec/sample_rec_0 \
+                     [... same options as the full reconstruction ...]
 
-    (denoise) $ denoise prepare \
-                     --file-name /local/data/tomo/sample.h5 \
-                     --reconstruction-type full \
-                     --binning 1 \
-                     --rotation-axis 1024.0
+    # odd-indexed projections (1, 3, 5, ...)
+    (tomocupy) $ tomocupy recon_steps \
+                     --start-proj 1 --proj-step 2 \
+                     --out-path-name /local/data/tomo_rec/sample_rec_1 \
+                     [... same options as the full reconstruction ...]
 
-This runs ``tomocupy recon_steps`` twice (even and odd projections) using
-exactly the same options, producing::
+This produces::
 
     /local/data/tomo_rec/
-        sample_rec/            ← full reconstruction (already exists)
-        sample_rec_0/          ← even-angle sub-reconstruction (N2I input A)
-        sample_rec_1/          ← odd-angle sub-reconstruction  (N2I input B)
-        sample_rec_config.yaml ← ready-to-use denoise config
+        sample_rec/    ← full reconstruction (already exists)
+        sample_rec_0/  ← even-angle sub-reconstruction (N2I input A)
+        sample_rec_1/  ← odd-angle sub-reconstruction  (N2I input B)
 
 .. note::
 
-   Use the same pre-processing options (ring removal, phase retrieval,
-   normalisation) for both sub-reconstructions as for the full reconstruction.
-   ``denoise prepare`` guarantees this automatically.
-
-When finished, ``denoise prepare`` prints the full path to the config file
-and the exact command to run next::
-
-    Config written to: /local/data/tomo_rec/sample_rec_config.yaml
-    Next step:
-      conda activate denoise
-      denoise train --config /local/data/tomo_rec/sample_rec_config.yaml --gpus 0,1
-
-::
-
-    (denoise) $ denoise prepare -h
-    usage: denoise prepare [-h] [--out-path-name PATH] [--recon-command {recon,recon_steps}] ...
-
-    Create Noise2Inverse (N2I) sub-reconstructions with tomocupy and write a config file
-
-    options:
-      -h, --help                              show this help message and exit
-      --out-path-name PATH                    Base output path for reconstructions. If omitted,
-                                              derived from --file-name using tomocupy convention:
-                                              <parent>_rec/<stem>_rec
-      --recon-command {recon,recon_steps}     tomocupy subcommand to use (default: recon_steps)
+   Use **exactly the same** pre-processing options (ring removal, phase
+   retrieval, normalisation, rotation axis) for both sub-reconstructions
+   as for the full reconstruction.
 
 .. note::
-   **Manual sub-reconstruction (non-tomocupy or non-APS HDF5 data)**
+   **Non-tomocupy or non-APS HDF5 data**
 
    If your raw data is not in the standard APS HDF5 format, or you prefer a
    reconstruction tool other than tomocupy, you can create the two
-   sub-reconstructions manually and write the config file by hand.
-
-   **Using tomocupy directly** (e.g. when ``denoise prepare`` is not available
-   in your environment):
-
-   Run the full reconstruction first, then run two additional reconstructions
-   using alternating projection subsets via ``--start-proj`` and
-   ``--proj-step``::
-
-       # even-indexed projections (0, 2, 4, ...)
-       (denoise) $ tomocupy recon_steps --start-proj 0 --proj-step 2 \
-                       --out-path-name /path/to/sample_rec_0 \
-                       [... your usual tomocupy options ...]
-
-       # odd-indexed projections (1, 3, 5, ...)
-       (denoise) $ tomocupy recon_steps --start-proj 1 --proj-step 2 \
-                       --out-path-name /path/to/sample_rec_1 \
-                       [... your usual tomocupy options ...]
+   sub-reconstructions with any tool and write the config file by hand.
 
    **Using tomopy / dxchange** (for arbitrary data formats):
 
@@ -133,7 +95,8 @@ and the exact command to run next::
 
    **Practical example** (APS 2-BM, February 2026 Chawla dataset)::
 
-       (denoise) $ denoise prepare \
+       # even-indexed projections
+       (tomocupy) $ tomocupy recon_steps \
                        --file-name /data3/2BM/2026-02/Chawla/As-cast-Mod2-100mm_115.h5 \
                        --reconstruction-type full \
                        --rotation-axis 1625 \
@@ -143,15 +106,31 @@ and the exact command to run next::
                        --retrieve-phase-alpha 0.0005 \
                        --pixel-size 0.69 \
                        --fbp-filter ramp \
-                       --remove-stripe-method fw
+                       --remove-stripe-method fw \
+                       --start-proj 0 --proj-step 2 \
+                       --out-path-name /data3/2BM/2026-02/Chawla_rec/As-cast-Mod2-100mm_115_rec_0
+
+       # odd-indexed projections
+       (tomocupy) $ tomocupy recon_steps \
+                       --file-name /data3/2BM/2026-02/Chawla/As-cast-Mod2-100mm_115.h5 \
+                       --reconstruction-type full \
+                       --rotation-axis 1625 \
+                       --propagation-distance 100 \
+                       --energy 30 \
+                       --retrieve-phase-method paganin \
+                       --retrieve-phase-alpha 0.0005 \
+                       --pixel-size 0.69 \
+                       --fbp-filter ramp \
+                       --remove-stripe-method fw \
+                       --start-proj 1 --proj-step 2 \
+                       --out-path-name /data3/2BM/2026-02/Chawla_rec/As-cast-Mod2-100mm_115_rec_1
 
    This produces::
 
        /data3/2BM/2026-02/Chawla_rec/
-           As-cast-Mod2-100mm_115_rec/            ← full reconstruction (already exists)
-           As-cast-Mod2-100mm_115_rec_0/          ← even-angle sub-reconstruction
-           As-cast-Mod2-100mm_115_rec_1/          ← odd-angle sub-reconstruction
-           As-cast-Mod2-100mm_115_rec_config.yaml ← ready-to-use config
+           As-cast-Mod2-100mm_115_rec/    ← full reconstruction (already exists)
+           As-cast-Mod2-100mm_115_rec_0/  ← even-angle sub-reconstruction
+           As-cast-Mod2-100mm_115_rec_1/  ← odd-angle sub-reconstruction
 
 Training
 ========
@@ -657,7 +636,6 @@ Command Reference
 
     Commands:
 
-        prepare   Create Noise2Inverse (N2I) sub-reconstructions with tomocupy and write a config file
         train     Train the Noise2Inverse model
         slice     Denoise a single CT slice
         volume    Denoise the entire CT volume

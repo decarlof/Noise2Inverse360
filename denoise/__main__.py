@@ -9,11 +9,6 @@ CT reconstructions using the trained model.
 
 Usage
 -----
-Create sub-reconstructions and config (run in the tomocupy environment)::
-
-    (tomocupy) $ denoise prepare --out-path-name /data/exp_rec \\
-                     --file-name raw.h5 --energy 50 --pixel-size 1.17
-
 Train the model::
 
     (denoise) $ denoise train --config /data/sample_rec_config.yaml --gpus 0,1
@@ -40,160 +35,6 @@ import logging
 
 from denoise import log
 
-
-def prepare(args):
-    """
-    Create the two Noise2Inverse sub-reconstructions using tomocupy and write
-    a ready-to-use configuration file.
-
-    Calls ``tomocupy recon`` twice — once with even-indexed projections
-    (``--start-proj 0 --proj-step 2``) and once with odd-indexed projections
-    (``--start-proj 1 --proj-step 2``) — then writes a ``denoise`` config file
-    next to the reconstruction directories.
-
-    Parameters
-    ----------
-    args.out_path_name : str
-        Base output path for the full reconstruction (the tomocupy
-        ``--out-path-name`` value).  The sub-reconstructions are written to
-        ``<out_path_name>_0`` and ``<out_path_name>_1``.
-    args.tomocupy_args : list of str
-        All remaining tomocupy recon arguments passed through verbatim
-        (e.g. ``--file-name``, ``--energy``, ``--pixel-size`` …).
-        Do **not** include ``--start-proj``, ``--proj-step``, or
-        ``--out-path-name`` — they are set automatically.
-
-    Example
-    -------
-    ::
-
-        (tomocupy) $ denoise prepare --out-path-name /data/exp_rec \\
-                         --file-name raw.h5 --energy 50 --pixel-size 1.17
-    """
-    import subprocess
-    import pathlib
-    import yaml
-
-    extra = args.tomocupy_args  # passthrough list
-
-    if args.out_path_name:
-        out_path = pathlib.Path(args.out_path_name)
-    else:
-        # Derive from --file-name using tomocupy's convention:
-        # /a/b/Li/sample.h5 -> /a/b/Li_rec/sample_rec
-        h5_file = None
-        for i, tok in enumerate(extra):
-            if tok == '--file-name' and i + 1 < len(extra):
-                h5_file = extra[i + 1]
-                break
-        if h5_file is None:
-            raise RuntimeError("--out-path-name omitted but --file-name not found in passthrough args.")
-        h5_path = pathlib.Path(h5_file)
-        out_path = h5_path.parent.parent / (h5_path.parent.name + '_rec') / (h5_path.stem + '_rec')
-        log.info("--out-path-name not specified, derived from --file-name: %s" % out_path)
-
-    parent_dir = out_path.parent
-    rec_name   = out_path.name
-
-    # Reject forbidden flags
-    forbidden = {'--start-proj', '--proj-step', '--out-path-name'}
-    for flag in extra:
-        if flag in forbidden:
-            log.error("Do not include %s in extra args — it is set automatically." % flag)
-            raise RuntimeError("Forbidden flag: %s" % flag)
-
-    recon_cmd = getattr(args, 'recon_command', 'recon')
-    for idx, label in ((0, 'even'), (1, 'odd')):
-        log.info("Sub-reconstruction %d (%s projections) ..." % (idx, label))
-        cmd = ['tomocupy', recon_cmd] + extra + [
-            '--start-proj', str(idx),
-            '--proj-step',  '2',
-            '--out-path-name', str(out_path) + '_%d' % idx,
-        ]
-        subprocess.run(cmd, check=True)
-
-    # --- instrument metadata from the raw HDF5 file ---
-    hdf_keys = [
-        '/process/acquisition/start_date',
-        '/measurement/sample/experimenter/name',
-        '/measurement/instrument/source/beamline',
-        '/measurement/instrument/source/current',
-        '/measurement/instrument/monochromator/energy',
-        '/measurement/instrument/monochromator/mode',
-        '/measurement/instrument/detection_system/scintillator/type',
-        '/measurement/instrument/detection_system/scintillator/active_thickness',
-        '/measurement/instrument/detection_system/objective/magnification',
-        '/measurement/instrument/detection_system/objective/resolution',
-        '/measurement/instrument/detector/manufacturer',
-        '/measurement/instrument/detector/model',
-        '/measurement/instrument/detector/serial_number',
-        '/measurement/instrument/detector/exposure_time',
-        '/measurement/instrument/detector/temperature',
-        '/measurement/instrument/detector/binning_x',
-        '/measurement/instrument/detector/binning_y',
-        '/measurement/instrument/detector_motor_stack/setup/z',
-    ]
-    metadata = {}
-    # Extract --file-name from the passthrough args
-    h5_file = None
-    for i, tok in enumerate(extra):
-        if tok == '--file-name' and i + 1 < len(extra):
-            h5_file = extra[i + 1]
-            break
-    if h5_file is not None:
-        try:
-            import meta as meta_lib
-            mp = meta_lib.read_meta.Hdf5MetadataReader(h5_file)
-            meta_dict = mp.readMetadata()
-            mp.close()
-            for hdf_path in hdf_keys:
-                if hdf_path not in meta_dict:
-                    continue
-                val   = meta_dict[hdf_path][0]
-                units = meta_dict[hdf_path][1]
-                key   = hdf_path.split('/')[-1]
-                if hdf_path == '/measurement/instrument/detector_motor_stack/setup/z':
-                    key = 'propagation_distance'
-                # Convert numpy scalars to Python natives to avoid numpy YAML tags
-                if hasattr(val, 'item'):
-                    val = val.item()
-                if key == 'mode':
-                    metadata[key] = {0: 'mono', 1: 'pink', 2: 'white'}.get(int(val), str(val))
-                elif units is None or isinstance(val, str):
-                    metadata[key] = val
-                else:
-                    metadata[key] = '%s %s' % (val, units)
-            log.info("Instrument metadata read from: %s" % h5_file)
-        except ImportError:
-            log.warning("'meta' library not installed — skipping metadata block.")
-        except Exception as exc:
-            log.warning("Could not read metadata from %s: %s" % (h5_file, exc))
-    else:
-        log.warning("--file-name not found in tomocupy args — skipping metadata block.")
-
-    config = {
-        'dataset': {
-            'directory_to_reconstructions': str(parent_dir),
-            'sub_recon_name0': '%s_0' % rec_name,
-            'sub_recon_name1': '%s_1' % rec_name,
-            'full_recon_name': rec_name,
-        },
-        'train':  {'psz': 256, 'n_slices': 5, 'mbsz': 32, 'lr': 0.001,
-                   'warmup': 2000, 'maxep': 2000},
-        'infer':  {'overlap': 0.5, 'window': 'cosine'},
-    }
-    if metadata:
-        config['metadata'] = metadata
-    config_path = parent_dir / ('%s_config.yaml' % rec_name)
-    with open(config_path, 'w') as fh:
-        yaml.dump(config, fh, default_flow_style=False, sort_keys=False)
-
-    log.info("Config written to: %s" % config_path)
-    log.info(
-        "Next step:\n"
-        "  conda activate denoise\n"
-        "  denoise train --config %s --gpus 0,1" % config_path
-    )
 
 
 def _print_registry_matches(matches):
@@ -422,30 +263,6 @@ def main():
 
     subparsers = parser.add_subparsers(title="Commands", metavar='')
 
-    # --- prepare (does not share --config / --gpus with the other commands) ---
-    prep_parser = subparsers.add_parser(
-        'prepare',
-        help='Create Noise2Inverse (N2I) sub-reconstructions with tomocupy and write a config file',
-        description='Create Noise2Inverse (N2I) sub-reconstructions with tomocupy and write a config file',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    prep_parser.add_argument(
-        '--out-path-name',
-        type=str,
-        default=None,
-        metavar='PATH',
-        help='Base output path for reconstructions. If omitted, derived from --file-name '
-             'using tomocupy convention: <parent>_rec/<stem>_rec',
-    )
-    prep_parser.add_argument(
-        '--recon-command',
-        type=str,
-        default='recon_steps',
-        choices=['recon', 'recon_steps'],
-        help='tomocupy subcommand to use for sub-reconstructions (default: recon_steps)',
-    )
-    prep_parser.set_defaults(_func=prepare)
-
     for cmd, func, text in cmd_parsers:
         cmd_parser = subparsers.add_parser(
             cmd,
@@ -575,11 +392,7 @@ def main():
         parser.print_help()
         sys.exit(0)
 
-    # For 'prepare', unknown args are the passthrough tomocupy arguments.
-    # For all other commands, unknown args are an error.
-    if getattr(args, '_func', None) is prepare:
-        args.tomocupy_args = unknown
-    elif unknown:
+    if unknown:
         parser.error('unrecognized arguments: %s' % ' '.join(unknown))
 
     try:
