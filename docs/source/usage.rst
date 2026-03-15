@@ -19,6 +19,28 @@ predict one from the other, removing noise without any clean reference images.
    You must create the two sub-reconstructions from the raw projection data
    before proceeding.
 
+denoise prepare
+---------------
+
+Run ``denoise prepare`` (in the ``denoise`` environment) to write the
+config YAML and print the two ``tomocupy recon_steps`` commands you need
+to run next::
+
+    (denoise) $ denoise prepare --file-name /data/sample.h5
+
+This reads instrument metadata from the HDF5 file, writes
+``sample_rec_config.yaml``, and prints the exact ``tomocupy recon_steps``
+commands with the correct ``--out-path-name`` values.
+
+.. note::
+
+   ``denoise prepare`` writes the config YAML only — it does **not** create
+   the sub-reconstruction directories.  Due to a NumPy compatibility issue
+   between the ``denoise`` and ``tomocupy`` environments, the two
+   sub-reconstructions must be created by running the printed commands
+   manually in the ``tomocupy`` environment (see below).  This limitation
+   will be removed once the NumPy issue is resolved.
+
 Sub-reconstructions with tomocupy
 ----------------------------------
 
@@ -636,6 +658,7 @@ Command Reference
 
     Commands:
 
+        prepare   Write a denoise config YAML from an HDF5 file path
         train     Train the Noise2Inverse model
         slice     Denoise a single CT slice
         volume    Denoise the entire CT volume

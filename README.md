@@ -47,9 +47,10 @@ Dependencies include:
         -   Sample 1 Directory:
             -   Provided by the User:
                 -   Full Reconstruction (Directory)
-            -   Created by `denoise prepare`:
+            -   Created by `tomocupy recon_steps` (tomocupy env):
                 -   Sub-Reconstruction 0 (Directory)
                 -   Sub-Reconstruction 1 (Directory)
+            -   Created by `denoise prepare` (denoise env):
                 -   `config.yaml`
             -   Created by `denoise train` / inference:
                 -   TrainOutput (Directory)
@@ -115,23 +116,41 @@ pip install .
 
 ### Data preparation
 
-Create the two sub-reconstructions and config file in one step (run in
-the `tomocupy` environment).  Pass `--file-name` so that instrument
-metadata is read from the raw HDF5 and written into the config:
+**Step 1 — write the config YAML** (run in the `denoise` environment):
 
 ``` bash
-(tomocupy) $ denoise prepare \
-                 --out-path-name /data/sample_rec \
-                 --file-name /data/sample.h5 \
-                 --reconstruction-type full \
-                 --binning 1 \
-                 --rotation-axis 1024.0
+(denoise) $ denoise prepare --file-name /data/sample.h5
 ```
 
-This produces `sample_rec_0/`, `sample_rec_1/`, and
-`sample_rec_config.yaml` alongside the full reconstruction.  The config
-includes a `metadata:` block with instrument provenance (beamline, energy,
-detector, scintillator, exposure time, etc.) used by the model registry.
+This writes `sample_rec_config.yaml` (with instrument metadata read from
+the HDF5) and prints the two `tomocupy recon_steps` commands you need to
+run next.
+
+> **Note:** `denoise prepare` does **not** create the sub-reconstruction
+> directories.  Due to a NumPy compatibility issue between the `denoise`
+> and `tomocupy` environments, the sub-reconstructions must be created
+> manually by running the printed commands in the `tomocupy` environment.
+
+**Step 2 — create the sub-reconstructions** (run in the `tomocupy` environment):
+
+``` bash
+# even-indexed projections (0, 2, 4, ...)
+(tomocupy) $ tomocupy recon_steps \
+                 --file-name /data/sample.h5 \
+                 --start-proj 0 --proj-step 2 \
+                 --out-path-name /data/sample_rec_0 \
+                 [... same options as the full reconstruction ...]
+
+# odd-indexed projections (1, 3, 5, ...)
+(tomocupy) $ tomocupy recon_steps \
+                 --file-name /data/sample.h5 \
+                 --start-proj 1 --proj-step 2 \
+                 --out-path-name /data/sample_rec_1 \
+                 [... same options as the full reconstruction ...]
+```
+
+`denoise prepare` prints the exact paths for `--out-path-name` derived
+from `--file-name`, so you can copy-paste them directly.
 
 ### Training
 
