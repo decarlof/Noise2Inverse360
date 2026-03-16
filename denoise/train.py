@@ -112,7 +112,7 @@ def run(args):
         resume_path = f"{odir}/resume.pth"
         if not os.path.exists(resume_path):
             raise RuntimeError("--resume specified but no resume checkpoint found at: %s" % resume_path)
-        ckpt = torch.load(resume_path, map_location='cpu')
+        ckpt = torch.load(resume_path, map_location='cpu', weights_only=False)
         model.module.load_state_dict(ckpt['model_state_dict'])
         optimizer.load_state_dict(ckpt['optimizer_state_dict'])
         start_epoch     = ckpt['epoch'] + 1

@@ -42,7 +42,7 @@ def run(args):
     ckpt_name = _ckpt_map[getattr(args, 'checkpoint', 'lcl')]
     path_to_mdl = params['dataset']['directory_to_reconstructions'] + '/' + 'TrainOutput' + '/' + ckpt_name
     log.info("Using checkpoint: %s" % ckpt_name)
-    checkpoint = torch.load(path_to_mdl, map_location=torch.device('cpu'))
+    checkpoint = torch.load(path_to_mdl, map_location=torch.device('cpu'), weights_only=False)
     model = unet_ns_gn(ich=n_slices, start_filter_size=16, channels_per_group=8)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.to(dev)
