@@ -1,11 +1,13 @@
 import numpy as np
-from torch.utils.data import Dataset 
-import logging
+from torch.utils.data import Dataset
 import albumentations as A
-import tiffs, yaml, sys
+import yaml, sys
 import warnings
 import torch
 import torch.nn as nn
+
+from denoise import log
+from denoise import tiffs
 
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union, Literal
@@ -13,10 +15,11 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union, Liter
 def save_normalization_value(config_file, mean, std):
         """
         This functin saves the mean and standard deviation back to the yaml file which is then used during inferencing
-        params
-            -config_file (str) location of the config file
-            -mean (float) mean used for normalization
-            -std (float) standard deviation used for normalization
+
+        params:
+            - config_file (str) location of the config file
+            - mean (float) mean used for normalization
+            - std (float) standard deviation used for normalization
         """
         # safe load
         try:
@@ -25,7 +28,7 @@ def save_normalization_value(config_file, mean, std):
         except FileNotFoundError:
             data = {} # If the file doesn't exist, start with an empty dictionary
         except yaml.YAMLError as exc:
-            print(f"Error loading YAML file: {exc}")
+            log.error("Error loading YAML file: %s" % exc)
             data = {} # Handle parsing errors
 
         data['dataset']['mean4norm'] = float(mean)
@@ -37,11 +40,14 @@ def save_normalization_value(config_file, mean, std):
 
 class TomoDatasetTrain(Dataset):
     """
-    Training class for 2.5D N2I
-        -This class loads in two lists corresponding to the two sub reconstructions (saved as .tiffs) and normalizes them
-    params
-        -params (obj) yaml object, essentially a dictionary
-        -config_file (str) location of the configuration file
+    Training class for 2.5D N2I.
+
+    This class loads in two lists corresponding to the two sub reconstructions
+    (saved as .tiffs) and normalizes them.
+
+    params:
+        - params (obj) yaml object, essentially a dictionary
+        - config_file (str) location of the configuration file
     """
     def __init__(self, params, config_file):
         super(TomoDatasetTrain, self).__init__()
@@ -77,15 +83,14 @@ class TomoDatasetTrain(Dataset):
         # normalize the data
         self.split0 -= split0_mean
         self.split0 /= split0_std
-        logging.info(f"\nSplit 0 is scaled with calculated mean: {split0_mean}, std: {split0_std}")
+        log.info(f"\nSplit 0 is scaled with calculated mean: {split0_mean}, std: {split0_std}")
 
         self.split1 -= split1_mean
         self.split1 /= split1_std
-        logging.info(f"\nSplit 1 is scaled with calculated mean: {split1_mean}, std: {split1_std}")
+        log.info(f"\nSplit 1 is scaled with calculated mean: {split1_mean}, std: {split1_std}")
     
-        # write mean and std to yaml file
-        logging.info('Saving training mean and standard deviation to configuration file to be used for inferencing')
-        save_normalization_value(config_file=config_file, mean=split0_mean, std=split0_std)
+        self.split0_mean = split0_mean
+        self.split0_std  = split0_std
 
         self.samples = self.__len__()
     
@@ -276,9 +281,11 @@ class TomoDatasetInfer(Dataset):
     Dataset that yields overlapping patches from a CT volume (NumPy) with 2.5D channels.
 
     Input volume: vol [D, H, W] (NumPy array)
+
     Each item returns:
-      - x_patch: torch.FloatTensor [C, ph, pw]
-      - info: dict with patch coordinates and indices (for stitching later)
+
+    - x_patch: torch.FloatTensor [C, ph, pw]
+    - info: dict with patch coordinates and indices (for stitching later)
     """
     def __init__(
         self,
@@ -294,7 +301,8 @@ class TomoDatasetInfer(Dataset):
         return_info: bool = True,
     ):
         """
-        params
+        params:
+
             params (obj) yaml object, essentially a dictionary
             start_slice: start slice of volume
             end_slice: end slice of volume
@@ -332,8 +340,8 @@ class TomoDatasetInfer(Dataset):
 
         self.vol -= mean4norm
         self.vol /= std4norm
-        logging.info(f'Volume Size: {self.vol.shape}')
-        logging.info(f"\nReconstruction is scaled with provided mean: {mean4norm}, std: {std4norm}")
+        log.info(f'Volume Size: {self.vol.shape}')
+        log.info(f"\nReconstruction is scaled with provided mean: {mean4norm}, std: {std4norm}")
 
         self.vol = self.vol.astype(output_dtype, copy=False)
 
@@ -373,6 +381,11 @@ class TomoDatasetInfer(Dataset):
         H_pad = H + self.pad_bottom
         W_pad = W + self.pad_right
         self.H_pad, self.W_pad = H_pad, W_pad
+
+        # Pre-pad H/W once so __getitem__ can index patches directly without
+        # copying full slices (reduces per-item memory movement from ~200 MB to ~1 MB).
+        self.vol_padded = _pad_hw_numpy(self.vol, self.pad_bottom, self.pad_right,
+                                        mode=pad_mode, constant_values=pad_constant)
 
         self.top_positions = _compute_positions(H_pad, self.ph, self.stride_h)
         self.left_positions = _compute_positions(W_pad, self.pw, self.stride_w)
@@ -433,6 +446,7 @@ class TomoDatasetInfer(Dataset):
                   - [T, ph, pw]               regression (implicit K=1)
                   - [T, 1, ph, pw]            regression (explicit K=1)
                   - [T, K, ph, pw]            segmentation logits/probs
+
                 where T must equal len(self.index) == total_patches.
 
             window:
@@ -445,6 +459,7 @@ class TomoDatasetInfer(Dataset):
                 If pred_patches was [T, ph, pw], output can be:
                   - keep_k_dim=True  -> [D_sel, 1, H, W]
                   - keep_k_dim=False -> [D_sel, H, W]
+
                 If pred_patches already has K dim, output keeps it.
 
             eps:
@@ -522,30 +537,33 @@ class TomoDatasetInfer(Dataset):
 
     def __getitem__(self, i: int):
         pi = self.index[i]
-
-        # 1) build 2.5D stack [C, H, W]
-        stack = _build_2p5d_stack(
-            self.vol,
-            d_idx=pi.d_idx,
-            neighbors=self.neighbors,
-            edge_mode=self.edge_mode,
-            constant_values=self.edge_constant,
-        )
-
-        # 2) pad bottom/right in H/W so patch always fits
-        stack_pad = _pad_hw_numpy(
-            stack,
-            pad_bottom=self.pad_bottom,
-            pad_right=self.pad_right,
-            mode=self.pad_mode,
-            constant_values=self.pad_constant,
-        )  # [C, H_pad, W_pad]
-
-        # 3) crop patch aligned across all channels
+        D = self.D
+        neighbors = self.neighbors
         top, left = pi.top, pi.left
-        patch = stack_pad[:, top:top + self.ph, left:left + self.pw]  # [C, ph, pw]
 
-        #x_patch = torch.from_numpy(patch)  # float32 by construction
+        # Build patch [C, ph, pw] by indexing directly into the pre-padded volume.
+        # This avoids copying full slices (~200 MB) just to extract a small patch.
+        if self.edge_mode == 'constant':
+            C = 2 * neighbors + 1
+            patch = np.full((C, self.ph, self.pw), self.edge_constant, dtype=self.vol_padded.dtype)
+            for ci, off in enumerate(range(-neighbors, neighbors + 1)):
+                di = pi.d_idx + off
+                if 0 <= di < D:
+                    patch[ci] = self.vol_padded[di, top:top + self.ph, left:left + self.pw]
+        else:
+            di_list = []
+            for off in range(-neighbors, neighbors + 1):
+                di = pi.d_idx + off
+                if self.edge_mode == 'edge':
+                    di = min(max(di, 0), D - 1)
+                else:  # reflect
+                    while di < 0 or di >= D:
+                        if di < 0:
+                            di = -di
+                        if di >= D:
+                            di = 2 * (D - 1) - di
+                di_list.append(di)
+            patch = self.vol_padded[di_list, top:top + self.ph, left:left + self.pw]
 
         if not self.return_info:
             return patch
@@ -556,8 +574,8 @@ class TomoDatasetInfer(Dataset):
             "left": left,
             "ph": self.ph,
             "pw": self.pw,
-            "neighbors": self.neighbors,
-            "C": 2 * self.neighbors + 1,
+            "neighbors": neighbors,
+            "C": 2 * neighbors + 1,
             "H_in": self.H_in,
             "W_in": self.W_in,
             "H_pad": self.H_pad,

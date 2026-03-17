@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Sphinx build output
+docs/_build/
+docs/bibtex.json
+
+# PyTorch / training artefacts
+*.pth
+logs/
+
+# macOS
+.DS_Store
+
+# Editors
+.vscode/
+*.swp
+
+# Login logs
+.loglogin

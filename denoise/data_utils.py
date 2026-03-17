@@ -37,17 +37,20 @@ def extract_sliding_window_patches_25d(
 
     Returns:
         patches: Tensor [N, P, C, ph, pw]
-                 where P is number of spatial patches per image.
-        coords:  List[(top,left)] of length P (shared across N). None if return_coords=False.
-        meta:    dict with useful info:
-                 - H_in, W_in: original spatial size
-                 - H_pad, W_pad: padded spatial size
-                 - ph, pw: patch size
-                 - stride_h, stride_w
-                 - n_rows, n_cols
-                 - P: number of patches per image
-                 - pad_top, pad_left (always 0 here; we pad bottom/right for simplicity)
-                 - pad_bottom, pad_right
+            where P is number of spatial patches per image.
+
+        coords: List[(top,left)] of length P (shared across N). None if return_coords=False.
+
+        meta: dict with useful info:
+
+            - H_in, W_in: original spatial size
+            - H_pad, W_pad: padded spatial size
+            - ph, pw: patch size
+            - stride_h, stride_w
+            - n_rows, n_cols
+            - P: number of patches per image
+            - pad_top, pad_left (always 0 here; we pad bottom/right for simplicity)
+            - pad_bottom, pad_right
     """
     if x.dim() != 4:
         raise ValueError(f"Expected x with shape [N,C,H,W], got {tuple(x.shape)}")
@@ -281,6 +284,7 @@ def stitch_sliding_window_patches(
             Either:
               - [N, P, K, ph, pw]  (recommended; K typically = 1 for regression)
               - [N*P, K, ph, pw]   (will be reshaped using P from meta)
+
             Note: K may be 1, but we keep it general.
 
         coords:

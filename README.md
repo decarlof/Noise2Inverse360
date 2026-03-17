@@ -1,5 +1,7 @@
 # 2.5D Noise2Inverse for Denoising CT Data
 
+[![Documentation Status](https://readthedocs.org/projects/noise2inverse360/badge/?version=latest)](https://noise2inverse360.readthedocs.io/en/latest/)
+
 ## Overview
 
 This project provides an implementation of the Noise2Inverse (N2I)
@@ -9,7 +11,7 @@ learning model. A simple U-Net model with leaky ReLU and group norm is
 used for denoising.
 
 <p align="center">
-  <img src="figs/workflow.svg" width="100%">
+  <img src="docs/source/img/workflow.svg" width="100%">
 </p>
 
 ## Installation
@@ -17,20 +19,23 @@ used for denoising.
 Create the conda environment:
 
 ``` bash
-git clone https://github.com/AISDC/Noise2Inverse360.git
-cd Noise2Inverse360
-conda env create -f n2i_environment.yml
+git clone https://github.com/AISDC/Noise2Inverse360 denoise
+cd denoise
+conda env create -f envs/denoise_environment.yml
+conda activate denoise
+pip install .
 ```
 
 Dependencies include:
 
 -   albumentations (data augmentation)
--   pytorch (2.4.0)
--   cuda (11.8)
+-   pytorch >= 2.0 (with CUDA support)
 -   tifffile
 -   tqdm
 -   matplotlib
--   skimage
+-   scikit-image
+-   scipy
+-   pyyaml
 
 
 ## Assumptions
@@ -42,17 +47,15 @@ Dependencies include:
         -   Sample 1 Directory:
             -   Provided by the User:
                 -   Full Reconstruction (Directory)
+            -   Created by `tomocupy recon_steps` (tomocupy env):
+                -   Sub-Reconstruction 0 (Directory)
                 -   Sub-Reconstruction 1 (Directory)
-                -   Sub Reconstruction 2 (Directory)
-            -   Provided by N2I:
+            -   Created by `denoise prepare` (denoise env):
                 -   `config.yaml`
+            -   Created by `denoise train` / inference:
                 -   TrainOutput (Directory)
-                -   `denoised_slices/`
-                -   `denoised_volume/`
-
--   Data for training/inference is already created.
-
-    -   This project does not generate reconstructions.
+                -   `<sample>_denoised_slices/`
+                -   `<sample>_denoised_volume/`
 
 -   Data is saved as `.tiff` files (`.tif` or `.tiff`).
 
@@ -73,75 +76,154 @@ Dependencies include:
 
 ## Project Structure
 
-    N2I/
-    ├── data.py
-    ├── data_util.py
-    ├── denoise_slice.py
-    ├── denoise_volume.py
-    ├── eval.py
-    ├── loss.py
-    ├── main.py
-    ├── model.py
-    ├── tiffs.py
-    ├── utils.py
-    ├── train.sh
-    ├── denoise_slice.sh
-    ├── denoise_volume.sh
-    ├── environment.yaml
-    └── baseline_config.yaml
+    denoise/
+    ├── denoise/
+    │   ├── __init__.py
+    │   ├── __main__.py      # CLI entry point (prepare / train / slice / volume / register / search)
+    │   ├── registry.py      # local model registry (~/.denoise/registry/)
+    │   ├── log.py           # colored logging module
+    │   ├── train.py         # DDP training loop
+    │   ├── slice.py         # single-slice inference
+    │   ├── volume.py        # full-volume inference
+    │   ├── data.py          # dataset classes
+    │   ├── data_utils.py    # patch extraction / stitching
+    │   ├── model.py         # U-Net architecture
+    │   ├── loss.py          # LCL loss
+    │   ├── eval.py          # evaluation metrics
+    │   ├── tiffs.py         # TIFF I/O utilities
+    │   └── utils.py         # image utilities
+    ├── docs/                # Sphinx documentation
+    │   └── source/img/      # workflow and example figures
+    ├── envs/
+    │   ├── denoise_environment.yml
+    │   └── requirements.txt
+    ├── baseline_config.yaml
+    ├── LICENSE
+    ├── setup.py
+    └── VERSION
 
 ## Getting Started
 
-### Bash Scripts
+### Installation
 
-Add the path to the virtual environment inside each `.sh` script.
+``` bash
+git clone https://github.com/AISDC/Noise2Inverse360 denoise
+cd denoise
+conda env create -f envs/denoise_environment.yml
+conda activate denoise
+pip install .
+```
 
-### Config File
+### Data preparation
 
-Copy `baseline_config.yaml` into your reconstruction directory and
-modify:
+**Step 1 — write the config YAML** (run in the `denoise` environment):
 
--   Path to directory
--   Names of full reconstruction and sub-recon directories
+``` bash
+(denoise) $ denoise prepare --file-name /data/sample.h5
+```
+
+This writes `sample_rec_config.yaml` (with instrument metadata read from
+the HDF5) and prints the two `tomocupy recon_steps` commands you need to
+run next.
+
+> **Note:** `denoise prepare` does **not** create the sub-reconstruction
+> directories.  Due to a NumPy compatibility issue between the `denoise`
+> and `tomocupy` environments, the sub-reconstructions must be created
+> manually by running the printed commands in the `tomocupy` environment.
+
+**Step 2 — create the sub-reconstructions** (run in the `tomocupy` environment):
+
+``` bash
+# even-indexed projections (0, 2, 4, ...)
+(tomocupy) $ tomocupy recon_steps \
+                 --file-name /data/sample.h5 \
+                 --start-proj 0 --proj-step 2 \
+                 --out-path-name /data/sample_rec_0 \
+                 [... same options as the full reconstruction ...]
+
+# odd-indexed projections (1, 3, 5, ...)
+(tomocupy) $ tomocupy recon_steps \
+                 --file-name /data/sample.h5 \
+                 --start-proj 1 --proj-step 2 \
+                 --out-path-name /data/sample_rec_1 \
+                 [... same options as the full reconstruction ...]
+```
+
+`denoise prepare` prints the exact paths for `--out-path-name` derived
+from `--file-name`, so you can copy-paste them directly.
 
 ### Training
 
+Before launching a new training run, `denoise train` automatically
+searches the local model registry (`~/.denoise/registry/`) for a model
+trained under the same instrument conditions.  If a match is found, it
+is listed and you are asked whether to proceed:
+
 ``` bash
-bash train.sh /path/to/config.yaml
+(denoise) $ denoise train --config /data/sample_rec_config.yaml --gpus 0,1
+
+Registry search found 1 matching model(s):
+  [1] 2BM_pink_30keV_FLIROryx_20260219_143000  (9/9 criteria match — 100%)
+       beamline:   2-BM  |  mode: pink  |  energy: 30.0 keV  |  ...
+       registry path: /home/user/.denoise/registry/2BM_pink_30keV_FLIROryx_...
+
+Train a new model anyway? [y/N]
 ```
 
-Training workflow:
+Enter **N** to skip training and use the existing model, or **y** to
+train anyway.  To bypass the search entirely, add `--no-search`.
 
-1.  Load parameters from config file
-2.  Setup DDP (2 GPUs)
-3.  Create training output directory
-4.  Load dataset
-5.  Initialize model/optimizer
-6.  Randomly select patch size
-7.  Warmup with L1Loss before enabling LCL loss
-8.  Save best models based on validation + edge metrics
-9.  Save predicted images every 5 epochs
+Resume interrupted training with `--resume`:
+
+``` bash
+(denoise) $ denoise train --config /data/sample_rec_config.yaml --gpus 0,1 --resume
+```
+
+### Registering a trained model
+
+After training, register the model so it can be found automatically in
+future sessions:
+
+``` bash
+(denoise) $ denoise register \
+                --config /data/sample_rec_config.yaml \
+                --model-dir /data/sample_rec/TrainOutput
+```
+
+Models are stored in `~/.denoise/registry/` (never committed to git).
+On APS machines where tocai and tomo4 share a GPFS home directory, a
+model registered on tocai is immediately visible on tomo4.
+
+### Searching the registry
+
+``` bash
+(denoise) $ denoise search --config /data/new_sample_rec_config.yaml
+```
+
+Prints all registry entries that match the noise fingerprint of the
+given config, ranked by score (fraction of criteria matched).
 
 ### Denoise Slice
 
 ``` bash
-bash denoise_slice.sh /path/to/config.yaml 500
+denoise slice --config /data/sample_rec_config.yaml --slice-number 500
 ```
 
 -   Loads pretrained model
 -   Fetches slice ± neighboring slices (2.5D)
 -   Applies sliding window patching
 -   Normalizes using training statistics
--   Saves `.tiff` to `denoised_slices/`
+-   Saves `.tiff` to `<sample>_denoised_slices/`
 
 ### Denoise Volume
 
 ``` bash
-bash denoise_volume.sh /path/to/config.yaml 500 600
+denoise volume --config /data/sample_rec_config.yaml
+denoise volume --config /data/sample_rec_config.yaml --start-slice 500 --end-slice 600
 ```
 
 -   Optionally denoise slice subset
--   Directory `denoised_volume/` is recreated each run
+-   Directory `<sample>_denoised_volume/` is recreated each run
 -   Automatic batch size calculation
 -   Sliding window patching
 -   Mini-batch inference
@@ -150,7 +232,7 @@ bash denoise_volume.sh /path/to/config.yaml 500 600
 ### Denoised Example 
 
 <p align="center">
-  <img src="figs/denoised_example4.svg" width="800">
+  <img src="docs/source/img/denoised_example4.svg" width="800">
 </p>
 
 ## Contributing
