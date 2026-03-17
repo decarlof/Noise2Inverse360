@@ -109,6 +109,7 @@ def run(args):
     best_val_epoch, best_edge_epoch, best_lcl_epoch = 0, 0, 0
     epochs_since_improvement = 0
     patience = params['train'].get('patience', 0)
+    center_idx = n_slices // 2
 
     if getattr(args, 'resume', False):
         resume_path = f"{odir}/resume.pth"
@@ -147,50 +148,46 @@ def run(args):
         dl_train.sampler.set_epoch(epoch)
         # training loop
         for X_mb, Y_mb in dl_train:
-            optimizer.zero_grad()
 
             X_mb_dev = X_mb.cuda()
             Y_mb_dev = Y_mb.cuda()
 
             if model_updates <= warmup:
-                optimizer.zero_grad()
-
-                # Process first view
+                optimizer.zero_grad(set_to_none=True)
+                
+                #Process first view
                 pred_view1 = model(X_mb_dev)
-                loss_view1 = criterion(pred_view1.squeeze(dim=1), Y_mb_dev[:, int(n_slices // 2)])
-                loss_view1.backward()
-                optimizer.step()
+                loss_view1 = criterion(pred_view1.squeeze(dim=1), Y_mb_dev[:, center_idx])
 
-                optimizer.zero_grad()
-
-                # Process second view
+                #Process second view
                 pred_view2 = model(Y_mb_dev)
-                loss_view2 = criterion(pred_view2.squeeze(dim=1), X_mb_dev[:, int(n_slices // 2)])
-                loss_view2.backward()
+                loss_view2 = criterion(pred_view2.squeeze(dim=1), X_mb_dev[:, center_idx])
+
+                loss = 0.5*(loss_view1 + loss_view2)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
+
 
                 loss_lcl1 = torch.tensor(0.)
                 loss_lcl2 = torch.tensor(0.)
 
             else:
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=True)
 
-                # Process first view
                 pred_view1 = model(X_mb_dev)
-                loss_view1 = criterion(pred_view1.squeeze(dim=1), Y_mb_dev[:, int(n_slices // 2)])
-                loss_lcl1 = criterion_lcl(pred_view1) * beta
-                loss_total1 = loss_view1 + loss_lcl1
-                loss_total1.backward()
-                optimizer.step()
-
-                optimizer.zero_grad()
-
-                # Process second view
                 pred_view2 = model(Y_mb_dev)
-                loss_view2 = criterion(pred_view2.squeeze(dim=1), X_mb_dev[:, int(n_slices // 2)])
-                loss_lcl2 = criterion_lcl(pred_view2) * beta
-                loss_total2 = loss_view2 + loss_lcl2
-                loss_total2.backward()
+
+                loss_view1 = criterion(pred_view1.squeeze(dim=1), Y_mb_dev[:, center_idx])
+                loss_view2 = criterion(pred_view2.squeeze(dim=1), X_mb_dev[:, center_idx])
+
+                loss_lcl1 = criterion_lcl(pred_view1)*beta
+                loss_lcl2 = criterion_lcl(pred_view2)*beta
+
+                loss = 0.5*(loss_view1 + loss_view2) + 0.5*(loss_lcl1 + loss_lcl2)
+
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
 
             loss = loss_view1 + loss_view2
