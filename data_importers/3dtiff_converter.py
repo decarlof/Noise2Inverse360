@@ -20,9 +20,9 @@ out_base = Path(sys.argv[2]) if len(sys.argv) > 2 else base
 out_base.mkdir(parents=True, exist_ok=True)
 
 for fname, outdir in [
-    ("delta_even.tiff", "delta_even"),
-    ("delta_odd.tiff",  "delta_odd"),
-    ("delta_all.tiff",  "delta_all"),
+    ("beta_even.tiff", "beta_even"),
+    ("beta_odd.tiff",  "beta_odd"),
+    ("beta_all.tiff",  "beta_all"),
 ]:
     vol = tifffile.imread(base / fname)  # [Z, H, W]
     out = out_base / outdir
