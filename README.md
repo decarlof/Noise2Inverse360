@@ -249,10 +249,15 @@ denoise volume --config /data/sample_rec_config.yaml --start-slice 500 --end-sli
 -   Mini-batch inference
 -   Saves output `.tiffs`
 
-### Denoised Example 
+### Denoised Example
 
 <p align="center">
   <img src="docs/source/img/denoised_example4.svg" width="800">
+</p>
+
+<p align="center">
+  <img src="docs/source/img/brain.png" width="800">
+  <br><em>Left: denoised &nbsp;|&nbsp; Right: noisy reconstruction (brain CT, APS 2-BM)</em>
 </p>
 
 ## Contributing
