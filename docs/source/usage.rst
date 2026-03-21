@@ -346,6 +346,38 @@ When to reuse vs. retrain
      - **No**
      - Retrain on new sub-reconstructions
 
+Fine-tuning a pre-trained model
+--------------------------------
+
+Instead of training from scratch, you can initialise the network with weights
+from a previously trained model and continue training on a new dataset.  This
+is useful when acquisition conditions are similar but not identical — fine-tuning
+for a fraction of the original epochs may be sufficient:
+
+.. code-block:: bash
+
+    # fine-tune from a registry entry
+    (denoise) $ denoise train \
+                    --config /data/new_sample_config.yaml \
+                    --gpus 0,1,2,3 \
+                    --finetune ~/.denoise/registry/2BM_pink_30keV_FLIROryx_22150530 \
+                    --no-search
+
+    # fine-tune from a specific .pth file
+    (denoise) $ denoise train \
+                    --config /data/new_sample_config.yaml \
+                    --gpus 0,1,2,3 \
+                    --finetune /data/brain_beta/TrainOutput/best_val_model.pth \
+                    --no-search
+
+``--finetune`` loads **model weights only** — all training state (epoch,
+loss history, best values) resets from scratch.  When a registry directory is
+given, ``best_val_model.pth`` is used automatically.
+
+.. note::
+
+   ``--finetune`` and ``--resume`` are mutually exclusive.
+
 Resuming interrupted training
 -----------------------------
 

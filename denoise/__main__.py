@@ -229,6 +229,8 @@ def train(args):
         ]
         if getattr(args, 'resume', False):
             cmd.append('--resume')
+        if getattr(args, 'finetune', None):
+            cmd.extend(['--finetune', args.finetune])
         log.info("Launching training via torchrun (%d GPU(s)) ..." % n_gpus)
         result = subprocess.run(cmd, env=env)
         sys.exit(result.returncode)
@@ -401,6 +403,14 @@ def main():
                 action='store_true',
                 default=False,
                 help='Resume training from the last completed epoch (requires resume.pth in TrainOutput/)',
+            )
+            cmd_parser.add_argument(
+                '--finetune',
+                type=str,
+                default=None,
+                metavar='DIR_OR_PTH',
+                help='Fine-tune from a pre-trained model: path to a registry directory or a .pth file. '
+                     'Loads model weights only; all training state resets from scratch.',
             )
             cmd_parser.add_argument(
                 '--no-search',

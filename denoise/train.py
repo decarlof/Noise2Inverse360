@@ -135,6 +135,15 @@ def run(args):
         continue_warmup = ckpt['continue_warmup']
         epochs_since_improvement = ckpt.get('epochs_since_improvement', 0)
         log.info("Resuming training from epoch %d (model_updates=%d)" % (start_epoch, model_updates))
+    elif getattr(args, 'finetune', None):
+        finetune_path = args.finetune
+        if os.path.isdir(finetune_path):
+            finetune_path = os.path.join(finetune_path, 'best_val_model.pth')
+        if not os.path.exists(finetune_path):
+            raise RuntimeError("--finetune: checkpoint not found: %s" % finetune_path)
+        ckpt = torch.load(finetune_path, map_location='cpu', weights_only=False)
+        model.module.load_state_dict(ckpt['model_state_dict'])
+        log.info("Fine-tuning from: %s (training state reset from scratch)" % finetune_path)
     else:
         log.info('Initializing model from scratch')
 
