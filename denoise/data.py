@@ -59,6 +59,7 @@ class TomoDatasetTrain(Dataset):
 
         # number of adjacent slices to use
         self.n_slices = train_params['n_slices']
+        z_stride = train_params.get('z_stride', 1)
         
         # specify augmentations for training
         self.augmentations = A.Compose([
@@ -74,10 +75,10 @@ class TomoDatasetTrain(Dataset):
         recon_1_path =  dataset_params['directory_to_reconstructions'] + '/' + dataset_params['sub_recon_name1']
 
         # collect tiff files and load in images
-        tiffs_collection = tiffs.glob(recon_0_path)
+        tiffs_collection = tiffs.glob(recon_0_path)[::z_stride]
         self.split0, split0_mean, split0_std = tiffs.load_stack(tiffs_collection)
 
-        tiffs_collection = tiffs.glob(recon_1_path)
+        tiffs_collection = tiffs.glob(recon_1_path)[::z_stride]
         self.split1, split1_mean, split1_std = tiffs.load_stack(tiffs_collection)
 
         # normalize the data
