@@ -497,10 +497,19 @@ Denoise a single CT slice::
 The denoised slice is saved as a TIFF in
 ``<directory_to_reconstructions>/<full_recon_name without _rec>_denoised_slices/``.
 
+By default the model is loaded from ``<directory_to_reconstructions>/TrainOutput/``.
+To use a registered model instead, pass ``--model-dir``::
+
+    (denoise) $ denoise slice \
+                    --config /data/sample_rec_config.yaml \
+                    --slice-number 500 \
+                    --checkpoint val \
+                    --model-dir ~/.denoise/registry/2BM_pink_30keV_FLIROryx_22150530_brain_beta_z5
+
 ::
 
     (denoise) $ denoise slice -h
-    usage: denoise slice [-h] --config FILE [--gpus IDS] --slice-number N [--checkpoint {val,lcl,edge}]
+    usage: denoise slice [-h] --config FILE [--gpus IDS] --slice-number N [--checkpoint {val,lcl,edge}] [--model-dir DIR]
 
     Denoise a single CT slice
 
@@ -510,6 +519,7 @@ The denoised slice is saved as a TIFF in
       --gpus IDS                    Comma-separated list of visible GPU IDs (default: 0)
       --slice-number N              Index of the CT slice to denoise
       --checkpoint {val,lcl,edge}   Checkpoint to use (default: lcl)
+      --model-dir DIR               Directory containing model checkpoints (default: TrainOutput/)
 
 denoise volume
 --------------
@@ -544,7 +554,7 @@ The denoised volume is saved as individual TIFF files in
 ::
 
     (denoise) $ denoise volume -h
-    usage: denoise volume [-h] --config FILE [--gpus IDS] [--start-slice N] [--end-slice N] [--checkpoint {val,lcl,edge}]
+    usage: denoise volume [-h] --config FILE [--gpus IDS] [--start-slice N] [--end-slice N] [--checkpoint {val,lcl,edge}] [--model-dir DIR]
 
     Denoise the entire CT volume
 
@@ -555,6 +565,7 @@ The denoised volume is saved as individual TIFF files in
       --start-slice N               Start slice index (default: first slice)
       --end-slice N                 End slice index (default: last slice)
       --checkpoint {val,lcl,edge}   Checkpoint to use (default: lcl)
+      --model-dir DIR               Directory containing model checkpoints (default: TrainOutput/)
 
 .. figure:: ../source/img/brain.png
    :width: 100%

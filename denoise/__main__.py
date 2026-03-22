@@ -441,6 +441,14 @@ def main():
                 choices=['val', 'lcl', 'edge'],
                 help='Checkpoint to use: val=lowest val loss, lcl=lowest LCL loss, edge=highest edge score',
             )
+            cmd_parser.add_argument(
+                '--model-dir',
+                type=str,
+                default=None,
+                metavar='DIR',
+                help='Directory containing model checkpoints (registry entry or TrainOutput/). '
+                     'Defaults to <directory_to_reconstructions>/TrainOutput/',
+            )
 
         elif cmd == 'volume':
             cmd_parser.add_argument(
@@ -463,6 +471,14 @@ def main():
                 default='lcl',
                 choices=['val', 'lcl', 'edge'],
                 help='Checkpoint to use: val=lowest val loss, lcl=lowest LCL loss, edge=highest edge score',
+            )
+            cmd_parser.add_argument(
+                '--model-dir',
+                type=str,
+                default=None,
+                metavar='DIR',
+                help='Directory containing model checkpoints (registry entry or TrainOutput/). '
+                     'Defaults to <directory_to_reconstructions>/TrainOutput/',
             )
 
         cmd_parser.set_defaults(_func=func)
