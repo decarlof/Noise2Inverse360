@@ -105,19 +105,11 @@ def make_config(args):
     except Exception as exc:
         log.warning("Could not read metadata from %s: %s" % (h5_path, exc))
 
-    mode = getattr(args, 'mode', None) or '2.5d'
-    if mode == '3d':
-        train_block = {
-            'psz': 256, 'psz_3d': 64, 'n_slices': 5,
-            'nb_patches_3d': 1000, 'mbsz': 4,
-            'lr': 0.001, 'warmup': 2000, 'maxep': 2000, 'patience': 0,
-            'mode': '3d',
-        }
-    else:
-        train_block = {
-            'psz': 256, 'n_slices': 5, 'mbsz': 32,
-            'lr': 0.001, 'warmup': 2000, 'maxep': 2000, 'patience': 0,
-        }
+    train_block = {
+        'psz': 256, 'n_slices': 5, 'mbsz': 32,
+        'psz_3d': 64, 'nb_patches_3d': 1000,
+        'lr': 0.001, 'warmup': 2000, 'maxep': 2000, 'patience': 0,
+    }
 
     config = {
         'dataset': {
@@ -127,7 +119,7 @@ def make_config(args):
             'full_recon_name': rec_name,
         },
         'train':  train_block,
-        'infer':  {'overlap': 0.5, 'window': 'hann' if mode == '3d' else 'cosine'},
+        'infer':  {'overlap': 0.5, 'window': 'hann'},
     }
     if metadata:
         config['metadata'] = metadata
@@ -528,14 +520,6 @@ def main():
         default=None,
         metavar='PATH',
         help='Override the derived output base path (tomocupy --out-path-name)',
-    )
-    cfg_parser.add_argument(
-        '--mode',
-        type=str,
-        default='2.5d',
-        choices=['2.5d', '3d'],
-        metavar='MODE',
-        help='Convolution mode to pre-configure in the generated YAML: "2.5d" (default) or "3d"',
     )
     cfg_parser.set_defaults(_func=make_config)
 

@@ -57,11 +57,7 @@ Run ``denoise prepare`` (in the ``denoise`` environment) to write the
 config YAML and print the two ``tomocupy recon_steps`` commands you need
 to run next::
 
-    # 2.5D (default)
     (denoise) $ denoise prepare --file-name /data/sample.h5
-
-    # 3D — generates a YAML pre-configured with 3D training parameters
-    (denoise) $ denoise prepare --file-name /data/sample.h5 --mode 3d
 
 This reads instrument metadata from the HDF5 file, writes
 ``sample_rec_config.yaml``, and prints the exact ``tomocupy recon_steps``
@@ -518,8 +514,9 @@ completes.  The state is saved in ``resume.pth`` so it is preserved across
 3D mode configuration
 ---------------------
 
-When ``--mode 3d`` is used (or ``denoise prepare --mode 3d`` was run), the
-generated YAML includes 3D-specific training parameters:
+When ``--mode 3d`` is passed to ``denoise train``, the following
+YAML parameters control 3D training (``denoise prepare`` always writes
+both 2.5D and 3D fields so no manual editing is required):
 
 .. code-block:: yaml
 

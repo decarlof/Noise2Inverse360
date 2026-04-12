@@ -140,16 +140,13 @@ pip install .
 **Step 1 — write the config YAML** (run in the `denoise` environment):
 
 ``` bash
-# 2.5D mode (default)
 (denoise) $ denoise prepare --file-name /data/sample.h5
-
-# 3D mode — generates a YAML pre-configured for 3D training
-(denoise) $ denoise prepare --file-name /data/sample.h5 --mode 3d
 ```
 
 This writes `sample_rec_config.yaml` (with instrument metadata read from
 the HDF5) and prints the two `tomocupy recon_steps` commands you need to
-run next.
+run next.  The generated YAML includes parameters for both 2.5D and 3D
+modes — the mode is chosen later at `denoise train` time with `--mode`.
 
 > **Note:** `denoise prepare` does **not** create the sub-reconstruction
 > directories.  Due to a NumPy compatibility issue between the `denoise`
