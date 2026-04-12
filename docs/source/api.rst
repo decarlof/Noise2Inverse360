@@ -12,7 +12,9 @@ This section contains the API reference for
    api/denoise.slice
    api/denoise.volume
    api/denoise.model
+   api/denoise.model3d
    api/denoise.data
+   api/denoise.data3d
    api/denoise.data_utils
    api/denoise.utils
 

@@ -18,8 +18,10 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
 
 from denoise.model import unet_ns_gn
+from denoise.model3d import unet3d
 from denoise.loss import LCL
 from denoise.data import TomoDatasetTrain
+from denoise.data3d import TomoDataset3DTrain
 from denoise.utils import save2img
 from denoise.eval import laplacian_score_batch
 from denoise import log
@@ -68,13 +70,31 @@ def run(args):
 
     torch.cuda.set_device(local_rank)
 
-    log.info("Loading data into CPU memory, it will take a while ...")
-    ds_train = TomoDatasetTrain(params=params, config_file=args.config)
+    # Determine mode: CLI flag > YAML > default 2.5d
+    mode = getattr(args, 'mode', None) or params['train'].get('mode', '2.5d')
+    log.info("Training mode: %s" % mode)
 
-    # Only rank 0 writes normalization stats to the config file to avoid race conditions
+    # Save mode into config so inference commands can read it (rank 0 only)
+    if rank == 0 and params['train'].get('mode') != mode:
+        import yaml as _yaml
+        with open(args.config, 'r') as _f:
+            _cfg = _yaml.safe_load(_f)
+        _cfg['train']['mode'] = mode
+        with open(args.config, 'w') as _f:
+            _yaml.safe_dump(_cfg, _f, default_flow_style=False, sort_keys=False)
+    torch.distributed.barrier()
+
+    log.info("Loading data into CPU memory, it will take a while ...")
+
+    if mode == '3d':
+        ds_train = TomoDataset3DTrain(params=params, config_file=args.config)
+    else:
+        ds_train = TomoDatasetTrain(params=params, config_file=args.config)
+
+    # Only rank 0 writes normalization stats
     if rank == 0:
         from denoise.data import save_normalization_value
-        log.info("Saving training mean and standard deviation to configuration file to be used for inferencing")
+        log.info("Saving training mean and std to config for inference")
         save_normalization_value(config_file=args.config, mean=ds_train.split0_mean, std=ds_train.split0_std)
     torch.distributed.barrier()
 
@@ -84,9 +104,17 @@ def run(args):
 
     log.info("Loaded %d samples into CPU memory for training." % len(ds_train))
 
-    # initialize model from scratch
+    # Initialize model
     n_slices = params['train']['n_slices']
-    model = unet_ns_gn(ich=n_slices, start_filter_size=16, channels_per_group=8).cuda()
+    if mode == '3d':
+        psz_3d = int(params['train'].get('psz_3d', params['train'].get('psz', 64)))
+        n_blocks = int(params['train'].get('n_blocks_3d', 3))
+        start_filts = int(params['train'].get('start_filts_3d', 32))
+        model = unet3d(in_channels=1, out_channels=1, n_blocks=n_blocks,
+                       start_filts=start_filts).cuda()
+    else:
+        model = unet_ns_gn(ich=n_slices, start_filter_size=16, channels_per_group=8).cuda()
+
     optimizer = torch.optim.Adam(model.parameters(), lr=params['train']['lr'])
 
     model = DDP(model, device_ids=[local_rank], output_device=local_rank, find_unused_parameters=False)
@@ -110,7 +138,7 @@ def run(args):
     best_val_epoch, best_edge_epoch, best_lcl_epoch = 0, 0, 0
     epochs_since_improvement = 0
     patience = params['train'].get('patience', 0)
-    center_idx = n_slices // 2
+    center_idx = n_slices // 2  # used only in 2.5d mode
 
     if getattr(args, 'resume', False):
         resume_path = f"{odir}/resume.pth"
@@ -156,77 +184,78 @@ def run(args):
 
         model.train()
         dl_train.sampler.set_epoch(epoch)
-        # training loop
-        for X_mb, Y_mb in dl_train:
 
+        # ---- training loop ----
+        for X_mb, Y_mb in dl_train:
             X_mb_dev = X_mb.cuda()
             Y_mb_dev = Y_mb.cuda()
 
-            if model_updates <= warmup:
-                optimizer.zero_grad(set_to_none=True)
-                
-                #Process first view
-                pred_view1 = model(X_mb_dev)
-                loss_view1 = criterion(pred_view1.squeeze(dim=1), Y_mb_dev[:, center_idx])
+            optimizer.zero_grad(set_to_none=True)
+            pred_view1 = model(X_mb_dev)
+            pred_view2 = model(Y_mb_dev)
 
-                #Process second view
-                pred_view2 = model(Y_mb_dev)
+            if mode == '3d':
+                # 3D: inputs/outputs are [B, 1, D, H, W]; target is the full patch
+                loss_view1 = criterion(pred_view1, Y_mb_dev)
+                loss_view2 = criterion(pred_view2, X_mb_dev)
+            else:
+                # 2.5D: squeeze channel dim, compare against center slice
+                loss_view1 = criterion(pred_view1.squeeze(dim=1), Y_mb_dev[:, center_idx])
                 loss_view2 = criterion(pred_view2.squeeze(dim=1), X_mb_dev[:, center_idx])
 
-                loss = 0.5*(loss_view1 + loss_view2)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                optimizer.step()
-
-
+            if model_updates <= warmup:
                 loss_lcl1 = torch.tensor(0.)
                 loss_lcl2 = torch.tensor(0.)
-
+                loss = 0.5 * (loss_view1 + loss_view2)
             else:
-                optimizer.zero_grad(set_to_none=True)
+                if mode == '3d':
+                    # Apply LCL on center slice of 3D output
+                    D = pred_view1.shape[2]
+                    loss_lcl1 = criterion_lcl(pred_view1[:, :, D // 2]) * beta
+                    loss_lcl2 = criterion_lcl(pred_view2[:, :, D // 2]) * beta
+                else:
+                    loss_lcl1 = criterion_lcl(pred_view1) * beta
+                    loss_lcl2 = criterion_lcl(pred_view2) * beta
+                loss = 0.5 * (loss_view1 + loss_view2) + 0.5 * (loss_lcl1 + loss_lcl2)
 
-                pred_view1 = model(X_mb_dev)
-                pred_view2 = model(Y_mb_dev)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
 
-                loss_view1 = criterion(pred_view1.squeeze(dim=1), Y_mb_dev[:, center_idx])
-                loss_view2 = criterion(pred_view2.squeeze(dim=1), X_mb_dev[:, center_idx])
-
-                loss_lcl1 = criterion_lcl(pred_view1)*beta
-                loss_lcl2 = criterion_lcl(pred_view2)*beta
-
-                loss = 0.5*(loss_view1 + loss_view2) + 0.5*(loss_lcl1 + loss_lcl2)
-
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                optimizer.step()
-
-            loss = loss_view1 + loss_view2
-            step_losses.append(loss.detach().cpu().numpy())
-            loss_lcl = loss_lcl1 + loss_lcl2
-            step_lcl_loss.append(loss_lcl.detach().cpu().numpy())
+            step_losses.append((loss_view1 + loss_view2).detach().cpu().numpy())
+            step_lcl_loss.append((loss_lcl1 + loss_lcl2).detach().cpu().numpy())
             model_updates += 1
 
         model.eval()
         with torch.no_grad():
-            # validation loop
+            # ---- validation loop ----
             for X_mb, Y_mb in dl_train:
                 X_mb_dev = X_mb.cuda()
                 Y_mb_dev = Y_mb.cuda()
 
                 pred_view1 = model(X_mb_dev)
-                loss_view1 = criterion(pred_view1.squeeze(dim=1), Y_mb_dev[:, int(n_slices // 2)])
-                loss_lcl1 = criterion_lcl(pred_view1) * beta
-
                 pred_view2 = model(Y_mb_dev)
-                loss_view2 = criterion(pred_view2.squeeze(dim=1), X_mb_dev[:, int(n_slices // 2)])
-                loss_lcl2 = criterion_lcl(pred_view2) * beta
+
+                if mode == '3d':
+                    loss_view1 = criterion(pred_view1, Y_mb_dev)
+                    loss_view2 = criterion(pred_view2, X_mb_dev)
+                    D = pred_view1.shape[2]
+                    loss_lcl1 = criterion_lcl(pred_view1[:, :, D // 2]) * beta
+                    loss_lcl2 = criterion_lcl(pred_view2[:, :, D // 2]) * beta
+                    # Edge score on center slice
+                    lap_score = (laplacian_score_batch(pred_view1[:, :, D // 2].cpu()) +
+                                 laplacian_score_batch(pred_view2[:, :, D // 2].cpu()))
+                else:
+                    loss_view1 = criterion(pred_view1.squeeze(dim=1), Y_mb_dev[:, int(n_slices // 2)])
+                    loss_view2 = criterion(pred_view2.squeeze(dim=1), X_mb_dev[:, int(n_slices // 2)])
+                    loss_lcl1 = criterion_lcl(pred_view1) * beta
+                    loss_lcl2 = criterion_lcl(pred_view2) * beta
+                    lap_score = laplacian_score_batch(pred_view1.cpu()) + laplacian_score_batch(pred_view2.cpu())
 
                 loss = loss_view1 + loss_view2
-
-                lap_score = laplacian_score_batch(pred_view1.cpu()) + laplacian_score_batch(pred_view2.cpu())
                 step_edge_values.append(lap_score)
-
                 step_val_losses.append(loss.detach().cpu().numpy())
+                loss_lcl = loss_lcl1 + loss_lcl2
                 step_lcl_val_loss.append(loss_lcl.cpu().numpy())
 
         ep_time = time.time() - tick_ep
@@ -310,10 +339,17 @@ def run(args):
         # option to view the denoising process during training
         if epoch % 5 == 0:
             ridx = np.random.randint(pred_view1.shape[0])
-            save2img(pred_view1[ridx, -1].detach().cpu().numpy(), '%s/results/_%d_pred_view1.png' % (odir, epoch))
-            save2img(pred_view2[ridx, -1].detach().cpu().numpy(), '%s/results/_%d_pred_view2.png' % (odir, epoch))
-            save2img(X_mb_dev[ridx, int(n_slices // 2)].detach().cpu().numpy(), '%s/results/_%d_view1.png' % (odir, epoch))
-            save2img(Y_mb_dev[ridx, int(n_slices // 2)].detach().cpu().numpy(), '%s/results/_%d_view2.png' % (odir, epoch))
+            if mode == '3d':
+                D = pred_view1.shape[2]
+                save2img(pred_view1[ridx, 0, D // 2].detach().cpu().numpy(), '%s/results/_%d_pred_view1.png' % (odir, epoch))
+                save2img(pred_view2[ridx, 0, D // 2].detach().cpu().numpy(), '%s/results/_%d_pred_view2.png' % (odir, epoch))
+                save2img(X_mb_dev[ridx, 0, D // 2].detach().cpu().numpy(), '%s/results/_%d_view1.png' % (odir, epoch))
+                save2img(Y_mb_dev[ridx, 0, D // 2].detach().cpu().numpy(), '%s/results/_%d_view2.png' % (odir, epoch))
+            else:
+                save2img(pred_view1[ridx, -1].detach().cpu().numpy(), '%s/results/_%d_pred_view1.png' % (odir, epoch))
+                save2img(pred_view2[ridx, -1].detach().cpu().numpy(), '%s/results/_%d_pred_view2.png' % (odir, epoch))
+                save2img(X_mb_dev[ridx, int(n_slices // 2)].detach().cpu().numpy(), '%s/results/_%d_view1.png' % (odir, epoch))
+                save2img(Y_mb_dev[ridx, int(n_slices // 2)].detach().cpu().numpy(), '%s/results/_%d_view2.png' % (odir, epoch))
 
         # Keep track of when/where the best model is
         log.info('Lowest model validation loss %.6f at epoch %d' % (best_val_loss, best_val_epoch))

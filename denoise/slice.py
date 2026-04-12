@@ -28,6 +28,15 @@ def run(args):
     with open(args.config, 'r') as file:
         params = yaml.safe_load(file)
 
+    # 3D mode operates on full volumes — single-slice inference is not meaningful
+    mode = getattr(args, 'mode', None) or params['train'].get('mode', '2.5d')
+    if mode == '3d':
+        raise RuntimeError(
+            "The 'slice' command is not available in --mode 3d.\n"
+            "3D denoising processes full volumes. Use:\n\n"
+            "  denoise volume --config %s --mode 3d" % args.config
+        )
+
     # create directory for denoised slices
     full_recon_name = params['dataset']['full_recon_name']
     base_name = full_recon_name[:-4] if full_recon_name.endswith('_rec') else full_recon_name
