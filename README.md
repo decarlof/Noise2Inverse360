@@ -296,8 +296,20 @@ Areas for improvement:
 
 
 ## Citations
-Relevant Citations:    
+Relevant Citations:
+
 ```
+@article{Laugros2025.02.10.633538,
+  author = {Laugros, Alfred and Cloetens, Peter and Bosch, Carles and Schoonhoven, Richard and Pavlovic, Liam and Kuan, Aaron T. and Livingstone, Jayde and Zhang, Yuxin and Kim, Minsu and Hendriksen, Allard and Holler, Mirko and Wanner, Adrian A. and Azevedo, Anthony and Batenburg, K. Joost and Tuthill, John C. and Lee, Wei-Chung Allen and Schaefer, Andreas T. and Vigano, Nicola and Pacureanu, Alexandra},
+  title = {Self-supervised image restoration in coherent X-ray neuronal microscopy},
+  journal = {bioRxiv},
+  year = {2025},
+  elocation-id = {2025.02.10.633538},
+  doi = {10.1101/2025.02.10.633538},
+  publisher = {Cold Spring Harbor Laboratory},
+  URL = {https://www.biorxiv.org/content/early/2025/02/10/2025.02.10.633538}
+}
+
 @article{https://doi.org/10.1109/TCI.2020.3019647,
   title={Noise2inverse: Self-supervised deep convolutional denoising for tomography},
   author={Hendriksen, Allard Adriaan and Pelt, Dani{\"e}l Maria and Batenburg, K Joost},
