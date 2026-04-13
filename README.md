@@ -74,7 +74,7 @@ Dependencies include:
             -   Created by `denoise train` / inference:
                 -   TrainOutput (Directory)
                 -   `<sample>_denoised_slices/`
-                -   `<sample>_denoised_volume/`
+                -   `<sample>_denoised_volume_2.5d/` or `<sample>_denoised_volume_3d/`
 
 -   Data is saved as `.tiff` files (`.tif` or `.tiff`).
 
@@ -273,7 +273,7 @@ denoise volume --config /data/sample_rec_config.yaml --mode 3d
 -   Processes the full volume or a sub-volume (both modes)
 -   Automatic batch size calculation, sliding-window patching with Hann blending
 -   3D mode uses cubic patches and 3D overlap-add stitching
--   Saves output `.tiff` stack to `<sample>_denoised_volume/`
+-   Saves output `.tiff` stack to `<sample>_denoised_volume_2.5d/` or `<sample>_denoised_volume_3d/` (mode-suffixed so both results coexist)
 
 ### Denoised Example
 

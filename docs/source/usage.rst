@@ -643,7 +643,10 @@ To denoise only a sub-volume (slices 200 to 400)::
     (denoise) $ denoise volume --config /data/sample_rec_config.yaml --start-slice 200 --end-slice 400
 
 The denoised volume is saved as individual TIFF files in
-``<directory_to_reconstructions>/<full_recon_name without _rec>_denoised_volume/``.
+``<directory_to_reconstructions>/<full_recon_name without _rec>_denoised_volume_<mode>/``
+(e.g. ``delta_all_denoised_volume_2.5d/`` or ``delta_all_denoised_volume_3d/``).
+This means results from both modes coexist in the same reconstruction directory
+without overwriting each other.
 
 ::
 
@@ -658,6 +661,7 @@ The denoised volume is saved as individual TIFF files in
       --gpus IDS                    Comma-separated list of visible GPU IDs (default: 0)
       --start-slice N               Start slice index (default: first slice)
       --end-slice N                 End slice index (default: last slice)
+      --mode MODE                   Convolution mode: 2.5d (default) or 3d
       --checkpoint {val,lcl,edge}   Checkpoint to use (default: lcl)
       --model-dir DIR               Directory containing model checkpoints (default: TrainOutput/)
 
