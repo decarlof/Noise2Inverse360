@@ -333,13 +333,14 @@ class InferenceBatchSizeOptimizer:
         -max_batch_size (int) maximum batch size to check
         -precision (str) whether to use flaoting point 32 or amp
     """
-    def __init__(self, model: nn.Module, input_shape: tuple, device: torch.device = torch.device('cuda'), 
-                 max_batch_size: int = 512, precision: str = 'fp32'):
+    def __init__(self, model: nn.Module, input_shape: tuple, device: torch.device = torch.device('cuda'),
+                 max_batch_size: int = 512, precision: str = 'fp32', n_channels: int = 5):
         self.model = model.eval().to(device)
-        self.input_shape = input_shape  # (C, H, W) or (C, D, H, W) for 3D
+        self.input_shape = input_shape  # (H, W) for 2.5d or (D, H, W) for 3d
         self.device = device
         self.max_batch_size = max_batch_size
         self.precision = precision.lower()
+        self.n_channels = n_channels
 
         if self.precision not in ['fp32', 'amp']:
             raise ValueError("precision must be either 'fp32' or 'amp'")
@@ -354,7 +355,7 @@ class InferenceBatchSizeOptimizer:
         torch.cuda.empty_cache()
         torch.cuda.reset_peak_memory_stats(self.device)
 
-        dummy_input = torch.randn((batch_size, 5, *self.input_shape), device=self.device)
+        dummy_input = torch.randn((batch_size, self.n_channels, *self.input_shape), device=self.device)
         try:
             with torch.no_grad():
                 if self.precision == 'amp':

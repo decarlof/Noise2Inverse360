@@ -34,16 +34,16 @@ def run(args):
     with open(args.config, 'r') as file:
         params = yaml.safe_load(file)
 
+    # Determine mode: CLI flag > YAML config > default 2.5d
+    mode = getattr(args, 'mode', None) or params['train'].get('mode', '2.5d')
+
     # setup output directory
     full_recon_name = params['dataset']['full_recon_name']
     base_name = full_recon_name[:-4] if full_recon_name.endswith('_rec') else full_recon_name
-    output_dir = params['dataset']['directory_to_reconstructions'] + '/' + base_name + '_denoised_volume'
+    output_dir = params['dataset']['directory_to_reconstructions'] + '/' + base_name + '_denoised_volume_' + mode
     if os.path.isdir(output_dir):
         shutil.rmtree(output_dir)
     os.mkdir(output_dir)
-
-    # Determine mode: CLI flag > YAML config > default 2.5d
-    mode = getattr(args, 'mode', None) or params['train'].get('mode', '2.5d')
     log.info("Inference mode: %s" % mode)
 
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -73,10 +73,10 @@ def run(args):
     if mode == '3d':
         ds_test = TomoDataset3DInfer(params=params, start_slice=args.start_slice, end_slice=args.end_slice)
         psz_3d = ds_test.psz
-        patch_shape = (1, psz_3d, psz_3d, psz_3d)
+        patch_shape = (psz_3d, psz_3d, psz_3d)
 
         optimal_batch_size = InferenceBatchSizeOptimizer(model=model, input_shape=patch_shape, device=dev,
-                                                         max_batch_size=64, precision='fp32')
+                                                         max_batch_size=64, precision='fp32', n_channels=1)
         stats = optimal_batch_size.profile()
         mbsz = stats['optimal_batch_size']
 
