@@ -17,6 +17,7 @@ setup(
         'matplotlib',
         'scikit-image',
         'scipy',
+        'meta @ git+https://github.com/xray-imaging/meta.git',
     ],
     zip_safe = False,
     url = 'https://github.com/AISDC/Noise2Inverse360',

@@ -7,6 +7,7 @@ albumentations
 matplotlib
 scikit-image
 scipy
+meta  # https://github.com/xray-imaging/meta
 sphinx
 sphinx-rtd-theme
 sphinxcontrib-bibtex
