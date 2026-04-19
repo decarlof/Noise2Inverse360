@@ -107,7 +107,7 @@ def make_config(args):
 
     train_block = {
         'psz': 256, 'n_slices': 5, 'mbsz': 32,
-        'psz_3d': 64, 'nb_patches_3d': 1000,
+        'psz_3d': 96, 'nb_patches_3d': 17600, 'n_blocks_3d': 4, 'start_filts_3d': 56,
         'lr': 0.001, 'warmup': 2000, 'maxep': 2000, 'patience': 0,
     }
 
@@ -376,7 +376,7 @@ def main():
     # (command name, function, positional help text)
     cmd_parsers = [
         ('train',  train,          "Train the Noise2Inverse model"),
-        ('slice',  denoise_slice,  "Denoise a single CT slice"),
+        ('slice',  denoise_slice,  "Denoise a single CT slice (2.5D mode only)"),
         ('volume', denoise_volume, "Denoise the entire CT volume"),
     ]
 
@@ -410,7 +410,8 @@ def main():
             choices=['2.5d', '3d'],
             metavar='MODE',
             help='Convolution mode: "2.5d" (default, stacked 2D slices) or "3d" (full 3D U-Net). '
-                 'Overrides the mode stored in the YAML config.',
+                 'Overrides the mode stored in the YAML config. '
+                 'NOTE: the "slice" command is not available in 3D mode — use "volume" instead.',
         )
 
         if cmd == 'train':
