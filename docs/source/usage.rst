@@ -528,11 +528,11 @@ both 2.5D and 3D fields so no manual editing is required):
 
     train:
       psz: 256          # 2.5D patch size (ignored in 3D mode)
-      psz_3d: 64        # 3D cubic patch size — must be divisible by 2**n_blocks_3d
+      psz_3d: 96        # 3D cubic patch size — must be divisible by 2**n_blocks_3d
       n_slices: 5       # 2.5D stack depth (ignored in 3D mode)
-      nb_patches_3d: 1000  # number of random 3D patches per epoch
-      n_blocks_3d: 3    # U-Net encoder depth (3 = receptive field ~64³)
-      start_filts_3d: 32  # filter count of first encoder block
+      nb_patches_3d: 17600  # number of random 3D patches per epoch
+      n_blocks_3d: 4    # U-Net encoder depth (matches SSD_3D reference)
+      start_filts_3d: 56  # filter count of first encoder block
       mbsz: 4           # batch size — 3D patches are large; use 2–8 per GPU
       lr: 0.001
       warmup: 2000
@@ -547,17 +547,19 @@ both 2.5D and 3D fields so no manual editing is required):
 Key differences from 2.5D config:
 
 * ``psz_3d`` replaces ``psz`` for 3D patch size.  Must be divisible by
-  ``2**n_blocks_3d`` (e.g. 64 for 3 blocks, 128 for 3 blocks with more context).
-* ``mbsz`` should be much smaller than in 2.5D — a 64³ patch at fp32 is ~1 MB,
+  ``2**n_blocks_3d`` (e.g. 96 for 4 blocks since 96 / 16 = 6).
+* ``mbsz`` should be much smaller than in 2.5D — a 96³ patch at fp32 is ~3.4 MB,
   so 4–8 fit comfortably on a 40 GB GPU alongside the model.
 * ``nb_patches_3d`` sets how many random cubic patches are sampled per epoch.
-  1000 is a reasonable starting point; increase for larger volumes.
+  17600 matches the SSD_3D reference; reduce for quick experiments or smaller
+  volumes.
 
 .. tip::
 
-   Start with ``psz_3d: 64``, ``n_blocks_3d: 3``, ``mbsz: 4``.
-   If GPU memory allows, try ``psz_3d: 96`` or ``n_blocks_3d: 4`` for a
-   larger receptive field.
+   The defaults written by ``denoise prepare`` (``psz_3d: 96``,
+   ``n_blocks_3d: 4``, ``start_filts_3d: 56``, ``mbsz: 4``) match the SSD_3D
+   reference and are the recommended starting point.  Reduce ``psz_3d`` to 64
+   (with ``n_blocks_3d: 3``) if GPU memory is tight.
 
 Inference
 =========

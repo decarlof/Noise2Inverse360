@@ -68,16 +68,20 @@ Test the installation
 
     Commands:
 
-        prepare   Create Noise2Inverse (N2I) sub-reconstructions with tomocupy and write a config file
+        prepare   Write a denoise config YAML from an HDF5 file path
         train     Train the Noise2Inverse model
-        slice     Denoise a single CT slice
+        slice     Denoise a single CT slice (2.5D mode only)
         volume    Denoise the entire CT volume
+        register  Register a trained model in the local registry (~/.denoise/registry/)
+        search    Search the registry for models matching a config noise fingerprint
 
 Configuration
 =============
 
-All parameters are stored in a YAML configuration file. Copy
-``baseline_config.yaml`` from the repository root and edit it for your dataset::
+All parameters are stored in a YAML configuration file.  ``denoise prepare``
+writes a complete config (with both 2.5D and 3D fields) from an HDF5 file
+path; alternatively, copy ``baseline_config.yaml`` from the repository root
+and edit it for your dataset::
 
     dataset:
       directory_to_reconstructions: /path/to/reconstructions
@@ -85,19 +89,27 @@ All parameters are stored in a YAML configuration file. Copy
       sub_recon_name1: recon_view1
       full_recon_name: recon_full
     train:
-      psz: 256
-      n_slices: 5
-      mbsz: 32
+      psz: 256              # 2.5D patch size
+      n_slices: 5           # 2.5D stack depth
+      psz_3d: 96            # 3D cubic patch size (must be divisible by 2**n_blocks_3d)
+      nb_patches_3d: 17600  # 3D random patches per epoch
+      n_blocks_3d: 4        # 3D U-Net encoder depth
+      start_filts_3d: 56    # 3D first-block filter count
+      mbsz: 32              # batch size (use 4–8 in 3D mode)
       lr: 0.001
       warmup: 2000
       maxep: 2000
+      patience: 0
+      # mode: '2.5d'        # written automatically at first train; '2.5d' or '3d'
     infer:
       overlap: 0.5
-      window: "cosine"
+      window: "cosine"      # use "hann" for 3D mode
 
 The fields ``mean4norm`` and ``std4norm`` under ``dataset`` are written automatically
 by the training script from the first sub-reconstruction statistics and must be
-present before running inference.
+present before running inference.  The ``mode`` field under ``train`` is also
+written automatically the first time you run ``denoise train`` and is read by
+``slice``/``volume`` so you do not need to repeat ``--mode`` at inference time.
 
 Update
 ======

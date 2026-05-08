@@ -5,8 +5,8 @@ Credits
 Citations
 =========
 
-``denoise`` is built on three papers.  If you use this tool, please cite
-all three.
+``denoise`` is built on four papers.  If you use this tool, please cite
+all four (Laugros:25 only when using ``--mode 3d``).
 
 :cite:`Hendriksen:20` — **the core Noise2Inverse method**
 
@@ -34,6 +34,20 @@ all three.
    in the config controls how many neighbouring slices are stacked.
    The paper also demonstrates applicability to dynamic micro-tomography
    and X-ray diffraction tomography on real-world synchrotron datasets.
+
+:cite:`Laugros:25` — **3D U-Net architecture (used in --mode 3d)**
+
+   This paper introduces a self-supervised image restoration pipeline for
+   coherent X-ray neuronal microscopy (XNH), where structured 3D noise
+   from probe-object mixing is correlated across slices and cannot be
+   removed by 2D or 2.5D processing.  The architecture is a full 3D
+   U-Net with skip connections, layer normalisation, and 24-rotation
+   cubic-symmetry data augmentation.  ``denoise`` adopts this network
+   directly in ``--mode 3d`` (see ``model3d.py``); the default
+   hyperparameters written by ``denoise prepare``
+   (``psz_3d=96``, ``n_blocks_3d=4``, ``start_filts_3d=56``,
+   ``nb_patches_3d=17600``) match the SSD_3D reference configuration
+   from this paper.
 
 :cite:`Yunker:25` — **enhanced model selection and multi-checkpoint training**
 

@@ -78,10 +78,12 @@ Dependencies include:
 
 -   Data is saved as `.tiff` files (`.tif` or `.tiff`).
 
--   Model type/size is consistent across datasets.
+-   Two model architectures are available, selected with `--mode`:
 
-    -   U-Net without skip connections + leaky ReLU + group norm has
-        proven robust.
+    -   **2.5D** — 2D U-Net without skip connections + leaky ReLU + group
+        norm.  Robust across synchrotron beamlines.
+    -   **3D** — full 3D U-Net with skip connections (Laugros et al., 2025).
+        Recommended for coherent X-ray / XNH data with structured 3D noise.
 
 -   Inference can run while training is still in progress.
 
@@ -90,7 +92,8 @@ Dependencies include:
 -   Automatic batch size optimization for A100/V100 GPUs
     -   Accounts for image size, GPU memory, and model size to reduce
         OOM errors.
--   Support for 2.5D inference with PyTorch
+-   Support for 2.5D and 3D inference with PyTorch
+-   Local model registry with instrument-fingerprint search and `--finetune` from prior models
 -   Flexible plug-and-play workflow across different samples/users
 
 ## Project Structure
@@ -290,9 +293,11 @@ denoise volume --config /data/sample_rec_config.yaml --mode 3d
 
 Areas for improvement:
 
--   Fine-tuning from previous models (reduces training time from 8--12
-    hrs to \~30--60 min)
 -   Exploring alternative architectures beyond U-Net
+-   Quantitative 2.5D vs 3D benchmarks (PSNR/SSIM, runtime, VRAM) on
+    representative datasets
+-   Smoke tests covering the full `prepare` → `train` → `slice`/`volume`
+    workflow on tiny synthetic data
 
 
 ## Citations

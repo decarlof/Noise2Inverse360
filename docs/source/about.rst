@@ -83,7 +83,7 @@ Key advantages of 3D mode:
 
 Trade-offs:
 
-* Requires significantly more GPU memory (cubic patches, default 64³)
+* Requires significantly more GPU memory (cubic patches, default 96³)
 * Inference is patch-based with 3D overlap-add stitching (slower than 2.5D)
 * The ``slice`` command is not available in 3D mode — use ``volume`` instead
 

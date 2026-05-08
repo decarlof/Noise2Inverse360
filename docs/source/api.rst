@@ -16,6 +16,10 @@ This section contains the API reference for
    api/denoise.data
    api/denoise.data3d
    api/denoise.data_utils
+   api/denoise.loss
+   api/denoise.eval
+   api/denoise.registry
+   api/denoise.tiffs
    api/denoise.utils
 
 .. automodule:: denoise
